@@ -587,8 +587,7 @@ void
 build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num)
 {
 	void		*sscan;
-	OIndexDescr *primary,
-			   *idx;
+	OIndexDescr *idx;
 	Tuplesortstate *sortstate;
 	TupleTableSlot *primarySlot;
 	Relation	tableRelation,
@@ -599,10 +598,8 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num)
 	CheckpointFileHeader fileHeader;
 
 	idx = descr->indices[o_table->has_primary ? ix_num : ix_num + 1];
-	primary = GET_PRIMARY(descr);
-	o_btree_load_shmem(&primary->desc);
 	sortstate = tuplesort_begin_orioledb_index(idx, work_mem, false, NULL);
-	sscan = make_btree_seq_scan(&primary->desc, COMMITSEQNO_INPROGRESS, NULL);
+	sscan = make_btree_seq_scan(&GET_PRIMARY(descr)->desc, COMMITSEQNO_INPROGRESS, NULL);
 	primarySlot = MakeSingleTupleTableSlot(descr->tupdesc, &TTSOpsOrioleDB);
 
 	heap_tuples = 0;
@@ -673,8 +670,7 @@ rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
 				OTable *o_table, OTableDescr *descr)
 {
 	void 		*sscan;
-	OIndexDescr *primary,
-			   *idx;
+	OIndexDescr *idx;
 	Tuplesortstate **sortstates;
 	Tuplesortstate *toastSortState;
 	TupleTableSlot *primarySlot;
@@ -686,8 +682,6 @@ rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
 	CheckpointFileHeader *fileHeaders;
 	CheckpointFileHeader toastFileHeader;
 
-	primary = GET_PRIMARY(old_descr);
-	o_btree_load_shmem(&primary->desc);
 	sortstates = (Tuplesortstate **) palloc(sizeof(Tuplesortstate *) *
 											descr->nIndices);
 	fileHeaders = (CheckpointFileHeader *) palloc(sizeof(CheckpointFileHeader) *
@@ -705,7 +699,7 @@ rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
 													descr->indices[0],
 													work_mem, false, NULL);
 
-	sscan = make_btree_seq_scan(&primary->desc, COMMITSEQNO_INPROGRESS, NULL);
+	sscan = make_btree_seq_scan(&GET_PRIMARY(old_descr)->desc, COMMITSEQNO_INPROGRESS, NULL);
 
 	heap_tuples = 0;
 	ctid = 0;

@@ -1230,7 +1230,6 @@ orioledb_rescan(TableScanDesc sscan, ScanKey key, bool set_params,
 	if (scan->scan)
 		free_btree_seq_scan(scan->scan);
 
-	o_btree_load_shmem(&GET_PRIMARY(descr)->desc);
 	scan->scan = make_btree_seq_scan(&GET_PRIMARY(descr)->desc, scan->csn, NULL);
 }
 
