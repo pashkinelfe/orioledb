@@ -37,6 +37,10 @@
 #include "utils/syscache.h"
 #include "utils/timeout.h"
 
+#if PG_VERSION_NUM >= 140000
+#include "utils/wait_event.h"
+#endif
+
 #define QUEUE_READ_USLEEP_BASE		(10)
 #define QUEUE_READ_USLEEP_MULTIPLER	(2)
 #define QUEUE_READ_USLEEP_MAX		(1024 * QUEUE_READ_USLEEP_BASE)
@@ -271,9 +275,11 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				data_pos;
 	bool		finished = false;
 	OXid		oxid;
+#if PG_VERSION_NUM >= 140000
 	Size 		expected_table_size = 0,
 				actual_table_size = 0;
 	char	   *o_table_serialized = NULL;
+#endif
 
 	while (!finished)
 	{
@@ -334,19 +340,31 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 					Assert(ORelOidsIsValid(oids));
 
 					tuple.data = data + data_pos;
+#if PG_VERSION_NUM >= 140000
+					/* If index is now being built for a relation, wait until it finished before modifying it */
+					if (ORelOidsIsEqual(oids, recovery_oidxshared->oids))
+					{
+						while(recovery_oidxshared->recoveryidxbuild_modify)
+							ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
 
+						ConditionVariableCancelSleep();
+					}
+#endif
 					apply_modify_record(descr, indexDescr,
 										(recovery_header->type & RECOVERY_MODIFY),
 										tuple, false);
 				}
 				data_pos += tuple_len;
 			}
-			else if (recovery_header->type & RECOVERY_PARALLEL_INDEX_BUILD)
+#if PG_VERSION_NUM >= 140000
+			else if (recovery_header->type & (RECOVERY_LEADER_PARALLEL_INDEX_BUILD | RECOVERY_WORKER_PARALLEL_INDEX_BUILD ))
 			{
 				RecoveryMsgIdxBuild 	*msg = (RecoveryMsgIdxBuild *) (data + data_pos);
 				Size 					cur_chunk_size = data_size - offsetof(RecoveryMsgIdxBuild, o_table_serialized);
 
 				Assert(data_pos == 0);
+
+				/* First chunk of *PARALLEL_INDEX_BUILD recovery message */
 				if (msg->o_table_size)
 				{
 					actual_table_size = 0;
@@ -361,13 +379,45 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 
 				if (actual_table_size == expected_table_size)
 				{
-					/* participate as a worker in parallel index build */
-					_o_index_parallel_build_inner(NULL, NULL, o_table_serialized, actual_table_size);
+					if (recovery_header->type & RECOVERY_WORKER_PARALLEL_INDEX_BUILD)
+					{
+						Assert(expected_table_size == recovery_oidxshared->o_table_size);
+						Assert(recovery_idx_pool_size_guc <= id &&
+								id < recovery_idx_pool_size_guc + recovery_pool_size_guc - 1);
+						/* participate as a worker in parallel index build */
+						_o_index_parallel_build_inner(NULL, NULL, o_table_serialized, actual_table_size);
+					}
+					else if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD)
+					{
+						OTable 		*o_table;
+						OTableDescr *descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
+
+						Assert(id == recovery_idx_pool_size_guc + recovery_pool_size_guc - 1);
+						/*
+						 * start a parallel index build in a dedicated pool of recovery
+						 * workers and become their leader
+						 */
+						o_table = deserialize_o_table(o_table_serialized, actual_table_size);
+						o_fill_tmp_table_descr(descr, o_table);
+						build_secondary_index(o_table, descr, recovery_oidxshared->ix_num, true);
+						/*
+						 * Wakeup other recovery workers that may wait to do their modify operations on
+						 * this relation
+						 */
+						recovery_oidxshared->recoveryidxbuild_modify = false;
+						recovery_oidxshared->recoveryidxbuild = false;
+						ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
+						o_free_tmp_table_descr(descr);
+						pfree(descr);
+						pfree(o_table);
+					}
 					pfree(o_table_serialized);
+					actual_table_size = 0;
 				}
 
 				data_pos += data_size;
 			}
+#endif
 			else if (recovery_header->type & RECOVERY_COMMIT)
 			{
 				oxid_csn_record = (RecoveryMsgOXidPtr *) (data + data_pos);
@@ -398,6 +448,12 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 			}
 			else if (recovery_header->type & RECOVERY_FINISHED)
 			{
+#if PG_VERSION_NUM >= 140000
+				while(recovery_oidxshared->recoveryidxbuild_modify)
+					ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+
+				ConditionVariableCancelSleep();
+#endif
 				finished = true;
 				break;
 			}

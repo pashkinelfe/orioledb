@@ -208,6 +208,7 @@ Pointer		recovery_first_queue = NULL;
  * GUC value, number of recovery workers.
  */
 int			recovery_pool_size_guc;
+int 		recovery_idx_pool_size_guc;
 
 /*
  * GUC value, size of a single recovery queue.
@@ -278,16 +279,16 @@ recovery_shmem_needs(void)
 	Size		size = 0;
 
 	size = add_size(size, mul_size(CACHELINEALIGN(recovery_queue_size_guc),
-								   recovery_pool_size_guc));
+								   recovery_pool_size_guc + recovery_idx_pool_size_guc));
 	size = add_size(size, CACHELINEALIGN(sizeof(bool)));
 	size = add_size(size, CACHELINEALIGN(sizeof(pg_atomic_uint32)));
 	size = add_size(size, CACHELINEALIGN(sizeof(pg_atomic_uint32)));
 	size = add_size(size, CACHELINEALIGN(sizeof(RecoveryUndoLocFlush)));
 	size = add_size(size, CACHELINEALIGN(mul_size(sizeof(RecoveryWorkerPtrs),
-												  recovery_pool_size_guc + 1)));
+												  recovery_pool_size_guc + recovery_idx_pool_size_guc + 1)));
 	size = add_size(size, CACHELINEALIGN(mul_size(sizeof(pg_atomic_uint64), 3)));
 	size = add_size(size, CACHELINEALIGN(_o_index_parallel_estimate_shared(0)));
-	size = add_size(size, CACHELINEALIGN(tuplesort_estimate_shared(recovery_pool_size_guc + 1)));
+	size = add_size(size, CACHELINEALIGN(tuplesort_estimate_shared(recovery_idx_pool_size_guc + 1)));
 
 	return size;
 }
@@ -303,7 +304,7 @@ recovery_shmem_init(Pointer ptr, bool found)
 {
 	recovery_first_queue = ptr;
 	ptr += mul_size(CACHELINEALIGN(recovery_queue_size_guc),
-					recovery_pool_size_guc);
+					recovery_pool_size_guc + recovery_idx_pool_size_guc);
 
 	recovery_single_process = (bool *) ptr;
 	ptr += CACHELINEALIGN(sizeof(bool));
@@ -318,7 +319,8 @@ recovery_shmem_init(Pointer ptr, bool found)
 	ptr += CACHELINEALIGN(sizeof(RecoveryUndoLocFlush));
 
 	worker_ptrs = (RecoveryWorkerPtrs *) ptr;
-	ptr += CACHELINEALIGN(mul_size(sizeof(RecoveryWorkerPtrs), recovery_pool_size_guc));
+	ptr += CACHELINEALIGN(mul_size(sizeof(RecoveryWorkerPtrs), recovery_pool_size_guc + recovery_idx_pool_size_guc));
+
 	recovery_ptr = (pg_atomic_uint64 *) ptr;
 	recovery_main_retain_ptr = recovery_ptr + 1;
 	recovery_finished_list_ptr = recovery_ptr + 2;
@@ -327,9 +329,13 @@ recovery_shmem_init(Pointer ptr, bool found)
 
 	recovery_oidxshared = (oIdxShared *) ptr;
 	ptr += CACHELINEALIGN(_o_index_parallel_estimate_shared(0));
+	ConditionVariableInit(&recovery_oidxshared->recoverycv);
+	recovery_oidxshared->recoveryleaderstarted = false;
+	recovery_oidxshared->recoveryidxbuild = false;
+	recovery_oidxshared->recoveryidxbuild_modify = false;
 
 	recovery_sharedsort = (Sharedsort *) ptr;
-	ptr += CACHELINEALIGN(tuplesort_estimate_shared(recovery_pool_size_guc + 1));
+	ptr += CACHELINEALIGN(tuplesort_estimate_shared(recovery_idx_pool_size_guc + 1));
 
 	recovery_queue_data_size = recovery_queue_size_guc;
 
@@ -346,7 +352,7 @@ recovery_shmem_init(Pointer ptr, bool found)
 		pg_atomic_init_u32(worker_finish_count, 0);
 		pg_atomic_init_u32(worker_ptrs_changes, 0);
 
-		for (i = 0; i < recovery_pool_size_guc; i++)
+		for (i = 0; i < recovery_pool_size_guc + recovery_idx_pool_size_guc; i++)
 		{
 			shm_mq_create(GET_WORKER_QUEUE(i), recovery_queue_size_guc);
 			pg_atomic_init_u64(&worker_ptrs[i].commitPtr, InvalidXLogRecPtr);
@@ -356,6 +362,7 @@ recovery_shmem_init(Pointer ptr, bool found)
 		pg_atomic_init_u64(recovery_ptr, InvalidXLogRecPtr);
 		pg_atomic_init_u64(recovery_main_retain_ptr, InvalidXLogRecPtr);
 		pg_atomic_init_u64(recovery_finished_list_ptr, InvalidXLogRecPtr);
+
 	}
 }
 
@@ -429,7 +436,7 @@ read_xids(int checkpointnum, bool recovery_single, int worker_id)
 			state->checkpoint_xid = true;
 			state->wal_xid = false;
 			if (!recovery_single && worker_id < 0)
-				state->used_by = palloc0(recovery_pool_size_guc * sizeof(bool));
+				state->used_by = palloc0((recovery_pool_size_guc + recovery_idx_pool_size_guc) * sizeof(bool));
 			else
 				state->used_by = NULL;
 		}
@@ -494,7 +501,7 @@ o_recovery_start_hook(void)
 {
 	RecoveryWorkerState *state;
 	int			i,
-				num_workers = recovery_pool_size_guc;
+				num_workers = recovery_pool_size_guc + recovery_idx_pool_size_guc;
 	bool		recovery_single;
 
 	before_shmem_exit(recovery_on_proc_exit, (Datum) -1);
@@ -531,7 +538,7 @@ o_recovery_start_hook(void)
 				/*
 				 * Not enough slots for background workers.
 				 */
-				abort_recovery(workers_pool, recovery_pool_size_guc);
+				abort_recovery(workers_pool, num_workers);
 
 				ereport(ERROR,
 						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
@@ -597,7 +604,7 @@ o_recovery_logicalmsg_redo_hook(XLogReaderState *record)
 
 			if (unexpected_worker_detach)
 			{
-				abort_recovery(workers_pool, recovery_pool_size_guc);
+				abort_recovery(workers_pool, recovery_pool_size_guc + recovery_idx_pool_size_guc);
 				elog(ERROR, "orioledb recovery worker detached unexpectedly.");
 			}
 		}
@@ -609,7 +616,7 @@ o_recovery_finish_hook(bool cleanup)
 {
 	RecoveryWorkerState *state;
 	int			i,
-				num_workers = recovery_pool_size_guc;
+				num_workers = recovery_pool_size_guc + recovery_idx_pool_size_guc;
 	bool		recovery_single;
 
 	recovery_single = *recovery_single_process;
@@ -953,7 +960,8 @@ recovery_switch_to_oxid(OXid oxid, int worker_id)
 			cur_state->systree_modified = false;
 			cur_state->checkpoint_xid = false;
 			if (worker_id < 0 && !*recovery_single_process)
-				cur_state->used_by = palloc0(recovery_pool_size_guc * sizeof(bool));
+				cur_state->used_by = palloc0((recovery_pool_size_guc + recovery_idx_pool_size_guc) *
+						sizeof(bool));
 			else
 				cur_state->used_by = NULL;
 		}
@@ -1930,7 +1938,7 @@ replay_container(Pointer startPtr, Pointer endPtr,
 					}
 					else
 					{
-						build_secondary_index(new_o_table, &tmp_descr, ix_num);
+						build_secondary_index(new_o_table, &tmp_descr, ix_num, false);
 					}
 					o_free_tmp_table_descr(&tmp_descr);
 				}
@@ -2109,6 +2117,8 @@ worker_send_msg(int worker_id, Pointer msg, uint64 msg_size)
 {
 	RecoveryWorkerState *state = &workers_pool[worker_id];
 
+	Assert(workers_pool);
+	Assert(state);
 	if ((RECOVERY_QUEUE_BUF_SIZE - state->queue_buf_len) < msg_size)
 		worker_queue_flush(worker_id);
 
@@ -2198,7 +2208,7 @@ workers_send_finish(void)
 	RecoveryWorkerState *state;
 	int			i;
 
-	for (i = 0; i < recovery_pool_size_guc; i++)
+	for (i = 0; i < recovery_pool_size_guc + recovery_idx_pool_size_guc; i++)
 	{
 		state = &workers_pool[i];
 

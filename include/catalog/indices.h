@@ -63,8 +63,15 @@ typedef struct oIdxShared
 	 */
 	ConditionVariable workersdonecv;
 
-	/* Look for recovery workers joined parallel operation */
-	ConditionVariable recoveryworkersjoinedcv;
+	ConditionVariable recoverycv;
+	/* Wait until recovery leader init shared state */
+	bool recoveryleaderstarted;
+	/* Don't start next index build in recovery while current is in progress */
+	bool recoveryidxbuild;
+	/* Exclude relation with index being built in recovery from applying recovery modify messages
+	 * concurrently */
+	bool recoveryidxbuild_modify;
+	ORelOids	oids;
 
 	/*
 	 * mutex protects all fields before heapdesc.
@@ -118,7 +125,7 @@ extern void rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
 extern void assign_new_oids(OTable *oTable, Relation rel);
 extern void recreate_o_table(OTable *old_o_table, OTable *o_table);
 extern void build_secondary_index(OTable *o_table, OTableDescr *descr,
-								  OIndexNumber ix_num);
+								  OIndexNumber ix_num, bool in_dedicated_recovery_worker);
 extern void _o_index_parallel_build_main(dsm_segment *seg, shm_toc *toc);
 extern void _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 										  char *o_table_serialized, Size o_table_size);

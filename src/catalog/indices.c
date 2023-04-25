@@ -595,7 +595,7 @@ o_define_index(Relation rel, Oid indoid, bool reindex,
 			else
 			{
 				o_fill_tmp_table_descr(&tmpDescr, o_table);
-				build_secondary_index(o_table, &tmpDescr, ix_num);
+				build_secondary_index(o_table, &tmpDescr, ix_num, false);
 				o_free_tmp_table_descr(&tmpDescr);
 			}
 		}
@@ -636,9 +636,10 @@ o_define_index(Relation rel, Oid indoid, bool reindex,
 		LWLockRelease(&checkpoint_state->oTablesAddLock);
 }
 
+#if PG_VERSION_NUM >= 140000
 /* Send o_table to all recovery workers */
 static void
-workers_send_o_table(Pointer o_table_serialized, int o_table_size)
+recovery_send_o_table(Pointer o_table_serialized, int o_table_size, bool send_to_leader)
 {
 	RecoveryMsgIdxBuild *cur_chunk;
 	uint64				sent_net_size = 0,
@@ -646,6 +647,8 @@ workers_send_o_table(Pointer o_table_serialized, int o_table_size)
 						cur_chunk_size,
 						header_size = offsetof(RecoveryMsgIdxBuild, o_table_serialized);
 	int 				i;
+	int 				index_build_leader = recovery_idx_pool_size_guc + recovery_pool_size_guc - 1;
+	int					index_build_first_worker = recovery_pool_size_guc;
 
 	Assert(!(*recovery_single_process));
 	cur_chunk = palloc(Min(header_size + o_table_size, RECOVERY_QUEUE_BUF_SIZE));
@@ -654,19 +657,30 @@ workers_send_o_table(Pointer o_table_serialized, int o_table_size)
 	{
 		cur_net_size = Min(o_table_size - sent_net_size, RECOVERY_QUEUE_BUF_SIZE - header_size);
 		cur_chunk_size = header_size + cur_net_size;
-		cur_chunk->header.type = RECOVERY_PARALLEL_INDEX_BUILD;
+		cur_chunk->header.type = send_to_leader ? RECOVERY_LEADER_PARALLEL_INDEX_BUILD :
+												  RECOVERY_WORKER_PARALLEL_INDEX_BUILD;
 		cur_chunk->o_table_size = (sent_net_size == 0) ? o_table_size : 0;
 		memcpy(&cur_chunk->o_table_serialized, o_table_serialized + sent_net_size, cur_net_size);
-		for (i = 0; i < recovery_pool_size_guc; i++)
+
+		if (send_to_leader)
 		{
-			worker_send_msg(i, (Pointer) cur_chunk, cur_chunk_size);
-			worker_queue_flush(i);
+			worker_send_msg(index_build_leader, (Pointer) cur_chunk, cur_chunk_size);
+			worker_queue_flush(index_build_leader);
+		}
+		else
+		{
+			for (i = index_build_first_worker; i < index_build_leader; i++)
+			{
+				worker_send_msg(i, (Pointer) cur_chunk, cur_chunk_size);
+				worker_queue_flush(i);
+			}
 		}
 		sent_net_size += cur_net_size;
 	}
 
 	pfree(cur_chunk);
 }
+#endif
 
 /*
  * Invoke workers for leader. For non-recovery create parallel context and launch
@@ -764,12 +778,12 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 	else
 	{
 		/*
-		 * o_table is transferred to recovery workers using workers_send_o_table()
+		 * o_table is transferred to recovery workers using recovery_send_o_table()
 		 * and doesn't occupy space in btshared
 		 */
 		btshared = recovery_oidxshared;
 #if PG_VERSION_NUM >= 140000
-		btshared->nrecoveryworkers = *recovery_single_process ? 0 : recovery_pool_size_guc;
+		btshared->nrecoveryworkers = *recovery_single_process ? 0 : (recovery_idx_pool_size_guc - 1);
 #else
 		/* In PG13 parallel index build in recovery is disabled due to tuplesort_initialize_shared()
 		 * can not work with NULL seg. This is corrected by 808e13b282ef since PG14.
@@ -788,7 +802,6 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 	btshared->scantuplesortstates = scantuplesortstates;
 	btshared->worker_heap_sort_fn = buildstate->worker_heap_sort_fn;
 	/* Initialize mutable state */
-	ConditionVariableInit(&btshared->recoveryworkersjoinedcv);
 	ConditionVariableInit(&btshared->workersdonecv);
 	SpinLockInit(&btshared->mutex);
 	btshared->nrecoveryworkersjoined = 0;
@@ -834,7 +847,6 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 		if (btshared->nrecoveryworkers != 0)
 		{
 			tuplesort_initialize_shared(sharedsort, btshared->scantuplesortstates, NULL);
-			workers_send_o_table(o_table_serialized, o_table_size);
 		}
 
 		pfree(o_table_serialized);
@@ -879,10 +891,13 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 		WaitForParallelWorkersToAttach(pcxt);
 	else
 	{
+		recovery_oidxshared->recoveryleaderstarted = true;
+		ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
+
 		while(btshared->nrecoveryworkersjoined < btshared->nrecoveryworkers)
-		{
-			ConditionVariableSleep(&btshared->recoveryworkersjoinedcv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
-		}
+			ConditionVariableSleep(&btshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+
+		ConditionVariableCancelSleep();
 	}
 }
 
@@ -1049,7 +1064,7 @@ _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 		Assert(seg == NULL && toc == NULL);
 		btshared = recovery_oidxshared;
 		/* Size transferred through recovery message is the same one as stored in shared state */
-		Assert(recovery_o_table_size == btshared->o_table_size);
+		//Assert(recovery_o_table_size == btshared->o_table_size);
 		btspool->o_table = deserialize_o_table((Pointer) recovery_o_table_serialized, recovery_o_table_size);
 		sharedsort = recovery_sharedsort;
 	}
@@ -1119,11 +1134,14 @@ build_secondary_index_worker_sort(oIdxSpool *btspool, void *bt_shared, Sharedsor
 	o_table = btspool->o_table;
 	idx = btspool->descr->indices[o_table->has_primary ? btshared->ix_num : btshared->ix_num + 1];
 
-	/* Track recovery workers joined parallel operation */
-	SpinLockAcquire(&btshared->mutex);
-	btshared->nrecoveryworkersjoined++;
-	SpinLockRelease(&btshared->mutex);
-	ConditionVariableSignal(&btshared->recoveryworkersjoinedcv);
+	if (is_recovery_in_progress() && !(*recovery_single_process))
+	{
+		/* Track recovery workers joined parallel operation */
+		SpinLockAcquire(&btshared->mutex);
+		btshared->nrecoveryworkersjoined++;
+		SpinLockRelease(&btshared->mutex);
+		ConditionVariableBroadcast(&btshared->recoverycv);
+	}
 
 	/* Begin "partial" tuplesort */
 	btspool->sortstates = palloc0(sizeof(Tuplesortstate));
@@ -1224,7 +1242,7 @@ build_secondary_index_worker_heap_scan(OTableDescr *descr, OIndexDescr *idx, Par
 }
 
 void
-build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num)
+build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num, bool in_dedicated_recovery_worker)
 {
 	Tuplesortstate *sortstate;
 	Relation	tableRelation,
@@ -1240,7 +1258,6 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num)
 	int 		nParallelWorkers = 3;
 	OIndexDescr *idx;
 
-	index_tuples = palloc0(sizeof(double));
 	ctid = 1;
 	idx = descr->indices[o_table->has_primary ? ix_num : ix_num + 1];
 
@@ -1249,6 +1266,50 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num)
 	/* Attempt to launch parallel worker scan when required */
 	if (nParallelWorkers > 0)
 	{
+		/*
+		 * Don't proceed parallel index creation in main recovery worker.
+		 * Send message to main index creation worker in dedicated recovery workers pool
+		 */
+
+#if PG_VERSION_NUM >= 140000
+		if (is_recovery_in_progress() && !(*recovery_single_process) && !in_dedicated_recovery_worker)
+		{
+			int		 	o_table_size = 0;
+			Pointer 	o_table_serialized;
+
+			/* If other index build is in progress, wait until it finishes */
+			while (recovery_oidxshared->recoveryidxbuild)
+				ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+
+			ConditionVariableCancelSleep();
+
+			o_table_serialized = serialize_o_table(o_table, &o_table_size);
+			recovery_oidxshared->ix_num = ix_num;
+
+			/* Prevent rel modify during index build */
+			SpinLockAcquire(&recovery_oidxshared->mutex);
+			recovery_oidxshared->oids = descr->oids;
+			recovery_oidxshared->recoveryleaderstarted = false;
+			recovery_oidxshared->recoveryidxbuild_modify = true;
+			recovery_oidxshared->recoveryidxbuild = true;
+			SpinLockRelease(&recovery_oidxshared->mutex);
+
+			/* Send recovery message to become a leader */
+			recovery_send_o_table(o_table_serialized, o_table_size, true);
+			/* Wait while leader initializes, then send message to workers to join */
+			while(!recovery_oidxshared->recoveryleaderstarted)
+				ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+
+			ConditionVariableCancelSleep();
+			/* Send recovery message to workers to join */
+			recovery_send_o_table(o_table_serialized, o_table_size, false);
+
+			pfree(o_table_serialized);
+			return;
+		}
+#endif
+		index_tuples = palloc0(sizeof(double));
+
 		btspool = (oIdxSpool *) palloc0(sizeof(oIdxSpool));
 		btspool->o_table = o_table;
 		btspool->descr = descr;
@@ -1336,6 +1397,7 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num)
 		table_close(tableRelation, AccessExclusiveLock);
 		index_close(indexRelation, AccessExclusiveLock);
 	}
+
 	pfree(index_tuples);
 }
 
