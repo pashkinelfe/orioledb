@@ -37,7 +37,7 @@ extern uint64 recovery_queue_data_size;
 
 #define GET_WORKER_QUEUE(worker_id) ((void*)(recovery_first_queue \
 										+ recovery_queue_data_size * (worker_id)))
-#define GET_WORKER_ID(hash) ((hash) % recovery_pool_size_guc)
+#define GET_WORKER_ID(hash) ((hash) % (recovery_pool_size_guc + recovery_idx_pool_size_guc))
 
 /*
  * Recovery from master to workers messages format.
@@ -54,7 +54,8 @@ extern uint64 recovery_queue_data_size;
 #define RECOVERY_TOAST_CONSISTENT ((uint16) 1 << 10)
 #define RECOVERY_SAVEPOINT ((uint16) 1 << 11)
 #define RECOVERY_ROLLBACK_TO_SAVEPOINT ((uint16) 1 << 12)
-#define RECOVERY_PARALLEL_INDEX_BUILD ((uint16) 1 << 13)
+#define RECOVERY_WORKER_PARALLEL_INDEX_BUILD ((uint16) 1 << 13)
+#define RECOVERY_LEADER_PARALLEL_INDEX_BUILD ((uint16) 1 << 14)
 #define RECOVERY_MODIFY (RECOVERY_INSERT | RECOVERY_DELETE | RECOVERY_UPDATE)
 #define RECOVERY_QUEUE_BUF_SIZE (8 * 1024)
 

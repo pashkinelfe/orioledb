@@ -36,6 +36,7 @@
 #include "utils/inval.h"
 #include "utils/syscache.h"
 #include "utils/timeout.h"
+#include "utils/wait_event.h"
 
 #define QUEUE_READ_USLEEP_BASE		(10)
 #define QUEUE_READ_USLEEP_MULTIPLER	(2)
@@ -335,13 +336,18 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 
 					tuple.data = data + data_pos;
 
+					/* If index is now being built for a relation, wait until it finished before modifying it */
+					if (ORelOidsIsEqual(oids, recovery_oidxshared->oids))
+					{
+						ConditionVariableSleep(&recovery_oidxshared->recoveryindexbuild, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);						
+					}
 					apply_modify_record(descr, indexDescr,
 										(recovery_header->type & RECOVERY_MODIFY),
 										tuple, false);
 				}
 				data_pos += tuple_len;
 			}
-			else if (recovery_header->type & RECOVERY_PARALLEL_INDEX_BUILD)
+			else if (recovery_header->type & (RECOVERY_LEADER_PARALLEL_INDEX_BUILD | RECOVERY_WORKER_PARALLEL_INDEX_BUILD ))
 			{
 				RecoveryMsgIdxBuild 	*msg = (RecoveryMsgIdxBuild *) (data + data_pos);
 				Size 					cur_chunk_size = data_size - offsetof(RecoveryMsgIdxBuild, o_table_serialized);
@@ -361,8 +367,28 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 
 				if (actual_table_size == expected_table_size)
 				{
-					/* participate as a worker in parallel index build */
-					_o_index_parallel_build_inner(NULL, NULL, o_table_serialized, actual_table_size);
+					if (recovery_header->type & RECOVERY_WORKER_PARALLEL_INDEX_BUILD)
+					{
+						/* participate as a worker in parallel index build */
+						_o_index_parallel_build_inner(NULL, NULL, o_table_serialized, actual_table_size);
+					}
+					else if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD)
+					{
+						OTable 		*o_table;
+						OTableDescr *descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
+						/*
+						 * start a parallel index build in a dedicated pool of recovery
+						 * workers and become their leader
+						 */
+						o_table = deserialize_o_table(o_table_serialized, actual_table_size);
+						o_fill_tmp_table_descr(descr, o_table);
+						build_secondary_index(o_table, descr, recovery_oidxshared->ix_num, true);
+						/*
+						 * Wakeup other recovery workers that may wait to do their modify operations on
+						 * this relation
+						 */
+						ConditionVariableBroadcast(&recovery_oidxshared->recoveryindexbuild);
+					}
 					pfree(o_table_serialized);
 				}
 

@@ -342,6 +342,19 @@ _PG_init(void)
 							NULL,
 							NULL);
 
+	DefineCustomIntVariable("orioledb.recovery_idx_pool_size",
+							"Sets the number of recovery workers.",
+							NULL,
+							&recovery_idx_pool_size_guc,
+							3,
+							1,
+							128,
+							PGC_POSTMASTER,
+							0,
+							NULL,
+							NULL,
+							NULL);
+
 	/*
 	 * This variable added because we need values less than minimum value of
 	 * checkpoint_timeout(30s) for tests.
