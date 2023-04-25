@@ -788,6 +788,7 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 		 */
 		btshared->nrecoveryworkers = 0;
 #endif
+		Assert(btshared->ix_num); /* Already filled before calling dedicated recovery workers */
 		scantuplesortstates = leaderparticipates ? btshared->nrecoveryworkers + 1 : btshared->nrecoveryworkers;
 		btshared->o_table_size = o_table_size;
 		sharedsort = recovery_sharedsort;
@@ -1267,7 +1268,7 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num, 
 		 * Don't proceed parallel index creation in main recovery worker.
 		 * Send message to main index creation worker in dedicated recovery workers pool
 		 */
-		if (is_recovery_in_progress() && !in_dedicated_recovery_worker)
+		if (is_recovery_in_progress() && !(*recovery_single_process) && !in_dedicated_recovery_worker)
 		{
 			o_table_serialized = serialize_o_table(o_table, &o_table_size);
 			recovery_oidxshared->ix_num = ix_num;
@@ -1278,7 +1279,7 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num, 
 
 			workers_send_o_table(o_table_serialized, o_table_size, true);
 			pfree(o_table_serialized);
-			return;
+			goto go_out;
 		}
 
 		btspool = (oIdxSpool *) palloc0(sizeof(oIdxSpool));
@@ -1368,6 +1369,8 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num, 
 		table_close(tableRelation, AccessExclusiveLock);
 		index_close(indexRelation, AccessExclusiveLock);
 	}
+
+go_out:
 	pfree(index_tuples);
 }
 
