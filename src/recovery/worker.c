@@ -355,6 +355,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				Assert(data_pos == 0);
 				if (msg->o_table_size)
 				{
+					Assert(msg->o_table_size == recovery_oidxshared->o_table_size);
 					actual_table_size = 0;
 					expected_table_size = msg->o_table_size;
 					o_table_serialized = palloc0(expected_table_size);
@@ -369,6 +370,8 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				{
 					if (recovery_header->type & RECOVERY_WORKER_PARALLEL_INDEX_BUILD)
 					{
+						Assert(recovery_idx_pool_size_guc <= id &&
+								id < recovery_idx_pool_size_guc + recovery_pool_size_guc);
 						/* participate as a worker in parallel index build */
 						_o_index_parallel_build_inner(NULL, NULL, o_table_serialized, actual_table_size);
 					}
@@ -376,6 +379,8 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 					{
 						OTable 		*o_table;
 						OTableDescr *descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
+
+						Assert(id == recovery_idx_pool_size_guc + recovery_pool_size_guc);
 						/*
 						 * start a parallel index build in a dedicated pool of recovery
 						 * workers and become their leader
