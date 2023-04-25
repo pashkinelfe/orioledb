@@ -1269,7 +1269,7 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num, 
 		 */
 		if (is_recovery_in_progress() && !in_dedicated_recovery_worker)
 		{
-			o_table_serialized = serialize_o_table(btspool->o_table, &o_table_size);
+			o_table_serialized = serialize_o_table(o_table, &o_table_size);
 			recovery_oidxshared->ix_num = ix_num;
 
 			/* lock other recovery workers access while index is built */
@@ -1277,6 +1277,7 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num, 
 			recovery_oidxshared->oids = descr->oids;
 
 			workers_send_o_table(o_table_serialized, o_table_size, true);
+			pfree(o_table_serialized);
 			return;
 		}
 
