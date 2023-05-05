@@ -20,6 +20,12 @@
 #include "catalog/o_tables.h"
 #include "tableam/descr.h"
 
+typedef struct BgWorkerHandle
+{
+	int			slot;
+	uint64		generation;
+} BgWorkerHandle;
+
 typedef struct ODefineIndexContext
 {
 	Oid			oldNode;
@@ -101,6 +107,7 @@ typedef struct oIdxShared
 	void       (*worker_heap_sort_fn) (oIdxSpool *, void *, Sharedsort *, int sortmem, bool progress);
 	ParallelOScanDescData poscan;
 	OIndexNumber   ix_num;
+	BgWorkerHandle *worker_handle;
 	Size 		   o_table_size;
 	char 		   o_table_serialized[];
 } oIdxShared;

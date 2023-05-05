@@ -48,6 +48,7 @@
 #include "utils/memutils.h"
 #include "utils/typcache.h"
 
+
 /*
  * Recovery transaction state.
  */
@@ -105,7 +106,7 @@ typedef struct
 	/* Current index type */
 	OIndexType	type;
 	/* Handle for the worker */
-	BackgroundWorkerHandle *handle;
+	BgWorkerHandle *handle;
 } RecoveryWorkerState;
 
 PG_FUNCTION_INFO_V1(orioledb_recovery_synchronized);
@@ -521,6 +522,8 @@ o_recovery_start_hook(void)
 	if (!recovery_single)
 	{
 		workers_pool = palloc0(sizeof(RecoveryWorkerState) * num_workers);
+		recovery_oidxshared->worker_handle = palloc0(sizeof(BgWorkerHandle) *
+				(recovery_pool_size_guc + recovery_idx_pool_size_guc));
 
 		for (i = 0; i < num_workers; i++)
 		{
@@ -532,7 +535,7 @@ o_recovery_start_hook(void)
 			state->oids.relnode = InvalidOid;
 			state->oxid = InvalidOXid;
 
-			workers_pool[i].handle = recovery_worker_register(i);
+			workers_pool[i].handle = (BgWorkerHandle *) recovery_worker_register(i);
 			if (workers_pool[i].handle == NULL)
 			{
 				/*
@@ -547,6 +550,7 @@ o_recovery_start_hook(void)
 			}
 			state->queue = shm_mq_attach(GET_WORKER_QUEUE(i), NULL, workers_pool[i].handle);
 			state->queue_buf_len = 0;
+			memcpy(&recovery_oidxshared->worker_handle[i], workers_pool[i].handle, sizeof(BgWorkerHandle));
 		}
 		for (i = 0; i < num_workers; i++)
 		{
@@ -767,6 +771,10 @@ void
 recovery_init(int worker_id)
 {
 	HASHCTL		ctl;
+	int			index_build_leader = recovery_idx_pool_size_guc + recovery_pool_size_guc - 1;
+	int         index_build_first_worker = recovery_pool_size_guc;
+	RecoveryWorkerState *state;
+	int         i;
 
 	MemSet(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(OXid);
@@ -798,6 +806,44 @@ recovery_init(int worker_id)
 
 	if (worker_id < 0)
 		recovery_xmin = pg_atomic_read_u64(&xid_meta->runXmin);
+
+	if (worker_id == index_build_leader)
+	{
+		workers_pool = palloc0(sizeof(RecoveryWorkerState) * (recovery_idx_pool_size_guc + recovery_pool_size_guc));
+
+		for (i = index_build_first_worker; i < index_build_leader; i++)
+		{
+			state = &workers_pool[i];
+			shm_mq_set_sender(GET_WORKER_QUEUE(i), MyProc);
+			state->type = oIndexInvalid;
+			state->oids.datoid = InvalidOid;
+			state->oids.reloid = InvalidOid;
+			state->oids.relnode = InvalidOid;
+			state->oxid = InvalidOXid;
+
+			workers_pool[i].handle = &recovery_oidxshared->worker_handle[i];
+//			if (workers_pool[i].handle == NULL)
+//			{
+				/*
+				 * Not enough slots for background workers.
+				 */
+//				abort_recovery(workers_pool, num_workers);
+
+//				ereport(ERROR,
+//						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
+//						 errmsg("unable to start recovery workers"),
+//						 errdetail("You must increase max_worker_processes value or decrease orioledb.recovery_workers_number value.")));
+//			}
+			state->queue = shm_mq_attach(GET_WORKER_QUEUE(i), NULL, workers_pool[i].handle);
+			state->queue_buf_len = 0;
+		}
+
+		for (i = index_build_first_worker; i < index_build_leader; i++)
+		{
+			if (shm_mq_wait_for_attach(workers_pool[i].queue) != SHM_MQ_SUCCESS)
+				elog(ERROR, "unable to attach recovery workers to shm queue");
+		}
+	}
 
 	HandleStartupProcInterrupts_hook = o_handle_startup_proc_interrupts_hook;
 }
