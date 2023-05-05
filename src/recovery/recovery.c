@@ -106,7 +106,7 @@ typedef struct
 	/* Current index type */
 	OIndexType	type;
 	/* Handle for the worker */
-	BgWorkerHandle *handle;
+	BackgroundWorkerHandle *handle;
 } RecoveryWorkerState;
 
 PG_FUNCTION_INFO_V1(orioledb_recovery_synchronized);
@@ -535,7 +535,7 @@ o_recovery_start_hook(void)
 			state->oids.relnode = InvalidOid;
 			state->oxid = InvalidOXid;
 
-			workers_pool[i].handle = (BgWorkerHandle *) recovery_worker_register(i);
+			workers_pool[i].handle = recovery_worker_register(i);
 			if (workers_pool[i].handle == NULL)
 			{
 				/*
@@ -821,7 +821,7 @@ recovery_init(int worker_id)
 			state->oids.relnode = InvalidOid;
 			state->oxid = InvalidOXid;
 
-			workers_pool[i].handle = &recovery_oidxshared->worker_handle[i];
+			workers_pool[i].handle = (BackgroundWorkerHandle *) &recovery_oidxshared->worker_handle[i];
 //			if (workers_pool[i].handle == NULL)
 //			{
 				/*
