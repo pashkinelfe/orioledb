@@ -501,8 +501,7 @@ void
 o_recovery_start_hook(void)
 {
 	RecoveryWorkerState *state;
-	int			i,
-				num_workers = recovery_pool_size_guc + recovery_idx_pool_size_guc;
+	int			i;
 	bool		recovery_single;
 
 	before_shmem_exit(recovery_on_proc_exit, (Datum) -1);
@@ -521,11 +520,11 @@ o_recovery_start_hook(void)
 
 	if (!recovery_single)
 	{
-		workers_pool = palloc0(sizeof(RecoveryWorkerState) * num_workers);
-		recovery_oidxshared->worker_handle = palloc0(sizeof(BgWorkerHandle) *
-				(recovery_pool_size_guc + recovery_idx_pool_size_guc));
+		workers_pool = palloc0(sizeof(RecoveryWorkerState) * (recovery_workers + 1));
+//		recovery_oidxshared->worker_handle = palloc0(sizeof(BgWorkerHandle) *
+//				(recovery_pool_size_guc + recovery_idx_pool_size_guc));
 
-		for (i = 0; i < num_workers; i++)
+		for (i = recovery_first_worker; i <= index_build_leader ; i++)
 		{
 			state = &workers_pool[i];
 			shm_mq_set_sender(GET_WORKER_QUEUE(i), MyProc);
@@ -541,7 +540,7 @@ o_recovery_start_hook(void)
 				/*
 				 * Not enough slots for background workers.
 				 */
-				abort_recovery(workers_pool, num_workers);
+				abort_recovery(workers_pool, (recovery_workers + 1));
 
 				ereport(ERROR,
 						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
@@ -550,9 +549,9 @@ o_recovery_start_hook(void)
 			}
 			state->queue = shm_mq_attach(GET_WORKER_QUEUE(i), NULL, workers_pool[i].handle);
 			state->queue_buf_len = 0;
-			memcpy(&recovery_oidxshared->worker_handle[i], workers_pool[i].handle, sizeof(BgWorkerHandle));
+//			memcpy(&recovery_oidxshared->worker_handle[i], workers_pool[i].handle, sizeof(BgWorkerHandle));
 		}
-		for (i = 0; i < num_workers; i++)
+		for (i = 0; i < index_build_leader; i++)
 		{
 			if (shm_mq_wait_for_attach(workers_pool[i].queue) != SHM_MQ_SUCCESS)
 				elog(ERROR, "unable to attach recovery workers to shm queue");
@@ -771,8 +770,6 @@ void
 recovery_init(int worker_id)
 {
 	HASHCTL		ctl;
-	int			index_build_leader = recovery_idx_pool_size_guc + recovery_pool_size_guc - 1;
-	int         index_build_first_worker = recovery_pool_size_guc;
 	RecoveryWorkerState *state;
 	int         i;
 
@@ -811,7 +808,7 @@ recovery_init(int worker_id)
 	{
 		workers_pool = palloc0(sizeof(RecoveryWorkerState) * (recovery_idx_pool_size_guc + recovery_pool_size_guc));
 
-		for (i = index_build_first_worker; i < index_build_leader; i++)
+		for (i = index_build_first_worker; i <= index_build_last_worker; i++)
 		{
 			state = &workers_pool[i];
 			shm_mq_set_sender(GET_WORKER_QUEUE(i), MyProc);
@@ -821,24 +818,25 @@ recovery_init(int worker_id)
 			state->oids.relnode = InvalidOid;
 			state->oxid = InvalidOXid;
 
-			workers_pool[i].handle = (BackgroundWorkerHandle *) &recovery_oidxshared->worker_handle[i];
-//			if (workers_pool[i].handle == NULL)
-//			{
+			workers_pool[i].handle = recovery_worker_register(i);
+				//(BackgroundWorkerHandle *) &recovery_oidxshared->worker_handle[i];
+			if (workers_pool[i].handle == NULL)
+			{
 				/*
 				 * Not enough slots for background workers.
 				 */
-//				abort_recovery(workers_pool, num_workers);
+				abort_recovery(workers_pool, (recovery_idx_pool_size_guc + recovery_pool_size_guc));
 
-//				ereport(ERROR,
-//						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
-//						 errmsg("unable to start recovery workers"),
-//						 errdetail("You must increase max_worker_processes value or decrease orioledb.recovery_workers_number value.")));
-//			}
+				ereport(ERROR,
+						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
+						 errmsg("unable to start recovery workers"),
+						 errdetail("You must increase max_worker_processes value or decrease orioledb.recovery_workers_number value.")));
+			}
 			state->queue = shm_mq_attach(GET_WORKER_QUEUE(i), NULL, workers_pool[i].handle);
 			state->queue_buf_len = 0;
 		}
 
-		for (i = index_build_first_worker; i < index_build_leader; i++)
+		for (i = index_build_first_worker; i <= index_build_last_worker; i++)
 		{
 			if (shm_mq_wait_for_attach(workers_pool[i].queue) != SHM_MQ_SUCCESS)
 				elog(ERROR, "unable to attach recovery workers to shm queue");

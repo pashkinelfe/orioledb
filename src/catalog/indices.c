@@ -647,8 +647,6 @@ recovery_send_o_table(Pointer o_table_serialized, int o_table_size, bool send_to
 						cur_chunk_size,
 						header_size = offsetof(RecoveryMsgIdxBuild, o_table_serialized);
 	int 				i;
-	int 				index_build_leader = recovery_idx_pool_size_guc + recovery_pool_size_guc - 1;
-	int					index_build_first_worker = recovery_pool_size_guc;
 
 	Assert(!(*recovery_single_process));
 	cur_chunk = palloc(Min(header_size + o_table_size, RECOVERY_QUEUE_BUF_SIZE));
@@ -669,7 +667,7 @@ recovery_send_o_table(Pointer o_table_serialized, int o_table_size, bool send_to
 		}
 		else
 		{
-			for (i = index_build_first_worker; i < index_build_leader; i++)
+			for (i = index_build_first_worker; i <= index_build_last_worker; i++)
 			{
 				worker_send_msg(i, (Pointer) cur_chunk, cur_chunk_size);
 				worker_queue_flush(i);
@@ -891,8 +889,7 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 		WaitForParallelWorkersToAttach(pcxt);
 	else
 	{
-		recovery_oidxshared->recoveryleaderstarted = true;
-		ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
+		recovery_send_o_table(o_table_serialized, o_table_size, false);
 
 		while(btshared->nrecoveryworkersjoined < btshared->nrecoveryworkers)
 			ConditionVariableSleep(&btshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
@@ -1297,12 +1294,12 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num, 
 			/* Send recovery message to become a leader */
 			recovery_send_o_table(o_table_serialized, o_table_size, true);
 			/* Wait while leader initializes, then send message to workers to join */
-			while(!recovery_oidxshared->recoveryleaderstarted)
-				ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
-
-			ConditionVariableCancelSleep();
-			/* Send recovery message to workers to join */
-			recovery_send_o_table(o_table_serialized, o_table_size, false);
+//			while(!recovery_oidxshared->recoveryleaderstarted)
+//				ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+//
+//			ConditionVariableCancelSleep();
+//			/* Send recovery message to workers to join */
+//			recovery_send_o_table(o_table_serialized, o_table_size, false);
 
 			pfree(o_table_serialized);
 			return;
