@@ -1642,7 +1642,7 @@ abort_recovery(RecoveryWorkerState *workers_pool, bool send_to_idx_pool)
 {
 	int			i;
 	int         start = send_to_idx_pool ? index_build_first_worker : 0;
-	int         finish = send_to_idx_pool ? index_build_leader : index_build_last_worker;
+	int         finish = send_to_idx_pool ? index_build_last_worker : index_build_leader;
 
 	for (i = start; i <= finish; i++)
 	{
@@ -2254,7 +2254,7 @@ workers_send_finish(bool send_to_idx_pool)
 	RecoveryWorkerState *state;
 	int			i;
 	int			start = send_to_idx_pool ? index_build_first_worker : 0;
-	int 		finish = send_to_idx_pool ? index_build_leader : index_build_last_worker;
+	int 		finish = send_to_idx_pool ? index_build_last_worker : recovery_pool_size_guc;
 
 	for (i = start; i <= finish; i++)
 	{
