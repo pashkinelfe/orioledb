@@ -247,7 +247,7 @@ static void free_run_xmin(void);
 static bool need_flush_undo_pos(int worker_id);
 static void flush_current_undo_stack(void);
 static void o_handle_startup_proc_interrupts_hook(void);
-static void abort_recovery(RecoveryWorkerState *workers_pool, int num_workers);
+static void abort_recovery(RecoveryWorkerState *workers_pool, bool send_to_idx_pool);
 static void worker_wait_shutdown(RecoveryWorkerState *worker);
 
 static void replay_container(Pointer ptr, Pointer endPtr,
@@ -255,7 +255,7 @@ static void replay_container(Pointer ptr, Pointer endPtr,
 
 static void worker_send_modify(int worker_id, BTreeDescr *desc, uint16 recType,
 							   OTuple tuple, int tuple_len, bool wal);
-static void workers_send_finish(void);
+static void workers_send_finish(bool send_to_idx_pool);
 static void workers_send_oxid_finish(XLogRecPtr ptr, bool commit);
 static void workers_send_savepoint(SubTransactionId parentSubId);
 static void workers_send_rollback_to_savepoint(XLogRecPtr ptr,
@@ -540,7 +540,7 @@ o_recovery_start_hook(void)
 				/*
 				 * Not enough slots for background workers.
 				 */
-				abort_recovery(workers_pool, (recovery_workers + 1));
+				abort_recovery(workers_pool, false);
 
 				ereport(ERROR,
 						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
@@ -607,7 +607,7 @@ o_recovery_logicalmsg_redo_hook(XLogReaderState *record)
 
 			if (unexpected_worker_detach)
 			{
-				abort_recovery(workers_pool, recovery_pool_size_guc + recovery_idx_pool_size_guc);
+				abort_recovery(workers_pool, false);
 				elog(ERROR, "orioledb recovery worker detached unexpectedly.");
 			}
 		}
@@ -619,14 +619,14 @@ o_recovery_finish_hook(bool cleanup)
 {
 	RecoveryWorkerState *state;
 	int			i,
-				num_workers = recovery_pool_size_guc + recovery_idx_pool_size_guc;
+				num_workers = recovery_pool_size_guc + 1;
 	bool		recovery_single;
 
 	recovery_single = *recovery_single_process;
 
 	if (!recovery_single)
 	{
-		workers_send_finish();
+		workers_send_finish(false);
 		for (i = 0; i < num_workers; i++)
 		{
 			worker_wait_shutdown(&workers_pool[i]);
@@ -825,7 +825,7 @@ recovery_init(int worker_id)
 				/*
 				 * Not enough slots for background workers.
 				 */
-				abort_recovery(workers_pool, (recovery_idx_pool_size_guc + recovery_pool_size_guc));
+				abort_recovery(workers_pool, true);
 
 				ereport(ERROR,
 						(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
@@ -1638,11 +1638,13 @@ o_handle_startup_proc_interrupts_hook(void)
 }
 
 static void
-abort_recovery(RecoveryWorkerState *workers_pool, int num_workers)
+abort_recovery(RecoveryWorkerState *workers_pool, bool send_to_idx_pool)
 {
 	int			i;
+	int         start = send_to_idx_pool ? index_build_first_worker : 0;
+	int         finish = send_to_idx_pool ? index_build_leader : index_build_last_worker;
 
-	for (i = 0; i < num_workers; i++)
+	for (i = start; i <= finish; i++)
 	{
 		if (workers_pool[i].queue != NULL)
 			shm_mq_detach(workers_pool[i].queue);
@@ -2246,13 +2248,15 @@ worker_send_modify(int worker_id, BTreeDescr *desc, uint16 recType,
  * Sends recovery finish message to all workers in the pool.
  */
 static void
-workers_send_finish(void)
+workers_send_finish(bool send_to_idx_pool)
 {
 	RecoveryMsgEmpty finish_msg;
 	RecoveryWorkerState *state;
 	int			i;
+	int			start = send_to_idx_pool ? index_build_first_worker : 0;
+	int 		finish = send_to_idx_pool ? index_build_leader : index_build_last_worker;
 
-	for (i = 0; i < recovery_pool_size_guc + recovery_idx_pool_size_guc; i++)
+	for (i = start; i <= finish; i++)
 	{
 		state = &workers_pool[i];
 
