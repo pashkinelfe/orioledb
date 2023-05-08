@@ -221,7 +221,11 @@ recovery_worker_main(Datum main_arg)
 		recovery_finish(id);
 		LockReleaseSession(DEFAULT_LOCKMETHOD);
 
-		pg_atomic_fetch_add_u32(worker_finish_count, 1);
+		if(id <= index_build_leader)
+			pg_atomic_fetch_add_u32(worker_finish_count, 1);
+		else
+			pg_atomic_fetch_add_u32(idx_worker_finish_count, 1);
+
 		elog(LOG, "orioledb recovery worker %d finished.", id);
 		proc_exit(0);
 	}
@@ -448,6 +452,11 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 			else if (recovery_header->type & RECOVERY_FINISHED)
 			{
 #if PG_VERSION_NUM >= 140000
+				if (id == index_build_leader)
+				{
+					idx_workers_shutdown();
+				}
+
 				while(recovery_oidxshared->recoveryidxbuild_modify)
 					ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
 

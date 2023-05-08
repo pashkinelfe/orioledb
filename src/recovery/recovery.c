@@ -48,6 +48,26 @@
 #include "utils/memutils.h"
 #include "utils/typcache.h"
 
+/*
+ * Recovery worker state in pool.
+ */
+typedef struct
+{
+	/* Pointer to the worker queue */
+	shm_mq_handle *queue;
+	char		queue_buf[RECOVERY_QUEUE_BUF_SIZE];
+	int			queue_buf_len;
+	/* Current oids */
+	ORelOids	oids;
+	/* Current oxid */
+	OXid		oxid;
+	/* Current index type */
+	OIndexType	type;
+	/* Handle for the worker */
+	BackgroundWorkerHandle *handle;
+} RecoveryWorkerState;
+
+static RecoveryWorkerState *workers_pool;
 
 /*
  * Recovery transaction state.
@@ -90,24 +110,6 @@ typedef struct
 	dlist_node	node;
 } CheckpointUndoStack;
 
-/*
- * Recovery worker state in pool.
- */
-typedef struct
-{
-	/* Pointer to the worker queue */
-	shm_mq_handle *queue;
-	char		queue_buf[RECOVERY_QUEUE_BUF_SIZE];
-	int			queue_buf_len;
-	/* Current oids */
-	ORelOids	oids;
-	/* Current oxid */
-	OXid		oxid;
-	/* Current index type */
-	OIndexType	type;
-	/* Handle for the worker */
-	BackgroundWorkerHandle *handle;
-} RecoveryWorkerState;
 
 PG_FUNCTION_INFO_V1(orioledb_recovery_synchronized);
 
@@ -176,9 +178,6 @@ static dlist_head finished_list;
  */
 static dlist_head joint_commit_list;
 
-/* Pool of recovery workers and oxid hash for it */
-static RecoveryWorkerState *workers_pool;
-
 /* orioledb checkpoint number from which we start recovery */
 static uint32 startup_chkp_num;
 
@@ -235,6 +234,7 @@ OXid		recovery_xmin = InvalidOXid;
  * Number of successfully finished recovery workers.
  */
 pg_atomic_uint32 *worker_finish_count;
+pg_atomic_uint32 *idx_worker_finish_count;
 pg_atomic_uint32 *worker_ptrs_changes;
 RecoveryWorkerPtrs *worker_ptrs;
 pg_atomic_uint64 *recovery_ptr;
@@ -248,20 +248,19 @@ static bool need_flush_undo_pos(int worker_id);
 static void flush_current_undo_stack(void);
 static void o_handle_startup_proc_interrupts_hook(void);
 static void abort_recovery(RecoveryWorkerState *workers_pool, bool send_to_idx_pool);
-static void worker_wait_shutdown(RecoveryWorkerState *worker);
 
 static void replay_container(Pointer ptr, Pointer endPtr,
 							 bool single, XLogRecPtr xlogRecPtr);
 
 static void worker_send_modify(int worker_id, BTreeDescr *desc, uint16 recType,
 							   OTuple tuple, int tuple_len, bool wal);
-static void workers_send_finish(bool send_to_idx_pool);
 static void workers_send_oxid_finish(XLogRecPtr ptr, bool commit);
 static void workers_send_savepoint(SubTransactionId parentSubId);
 static void workers_send_rollback_to_savepoint(XLogRecPtr ptr,
 											   SubTransactionId parentSubId);
 static void workers_synchronize(XLogRecPtr csn, bool send_synchronize);
 static void workers_notify_toast_consistent(void);
+static void worker_wait_shutdown(RecoveryWorkerState *worker);
 
 static inline bool apply_sys_tree_modify_record(int sys_tree_num, uint16 type,
 												OTuple tup,
@@ -282,6 +281,7 @@ recovery_shmem_needs(void)
 	size = add_size(size, mul_size(CACHELINEALIGN(recovery_queue_size_guc),
 								   recovery_pool_size_guc + recovery_idx_pool_size_guc));
 	size = add_size(size, CACHELINEALIGN(sizeof(bool)));
+	size = add_size(size, CACHELINEALIGN(sizeof(pg_atomic_uint32)));
 	size = add_size(size, CACHELINEALIGN(sizeof(pg_atomic_uint32)));
 	size = add_size(size, CACHELINEALIGN(sizeof(pg_atomic_uint32)));
 	size = add_size(size, CACHELINEALIGN(sizeof(RecoveryUndoLocFlush)));
@@ -311,6 +311,9 @@ recovery_shmem_init(Pointer ptr, bool found)
 	ptr += CACHELINEALIGN(sizeof(bool));
 
 	worker_finish_count = (pg_atomic_uint32 *) ptr;
+	ptr += CACHELINEALIGN(sizeof(pg_atomic_uint32));
+
+	idx_worker_finish_count = (pg_atomic_uint32 *) ptr;
 	ptr += CACHELINEALIGN(sizeof(pg_atomic_uint32));
 
 	worker_ptrs_changes = (pg_atomic_uint32 *) ptr;
@@ -351,6 +354,7 @@ recovery_shmem_init(Pointer ptr, bool found)
 		SpinLockInit(&recovery_undo_loc_flush->exitLock);
 
 		pg_atomic_init_u32(worker_finish_count, 0);
+		pg_atomic_init_u32(idx_worker_finish_count, 0);
 		pg_atomic_init_u32(worker_ptrs_changes, 0);
 
 		for (i = 0; i < recovery_pool_size_guc + recovery_idx_pool_size_guc; i++)
@@ -495,6 +499,21 @@ apply_xids_branches(void)
 	recovery_oxid = InvalidOXid;
 	reset_cur_undo_locations();
 	cur_state = NULL;
+}
+
+void
+idx_workers_shutdown(void)
+{
+	int i;
+
+	workers_send_finish(true);
+	for (i = index_build_first_worker; i <= index_build_last_worker; i++)
+	{
+		worker_wait_shutdown(&workers_pool[i]);
+	}
+
+	if (pg_atomic_read_u32(idx_worker_finish_count) != index_build_workers)
+			elog(ERROR, "orioledb recovery idx worker died.");
 }
 
 void
@@ -1663,7 +1682,7 @@ abort_recovery(RecoveryWorkerState *workers_pool, bool send_to_idx_pool)
  * WaitForBackgroundWorkerShutdown() does not work in this context. We need
  * an analog.
  */
-static void
+void
 worker_wait_shutdown(RecoveryWorkerState *worker)
 {
 	BgwHandleStatus status;
@@ -2247,7 +2266,7 @@ worker_send_modify(int worker_id, BTreeDescr *desc, uint16 recType,
 /*
  * Sends recovery finish message to all workers in the pool.
  */
-static void
+void
 workers_send_finish(bool send_to_idx_pool)
 {
 	RecoveryMsgEmpty finish_msg;
