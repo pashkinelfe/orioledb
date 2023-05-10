@@ -536,6 +536,7 @@ o_recovery_start_hook(void)
 	startup_chkp_num = checkpoint_state->lastCheckpointNumber;
 	recovery_cleanup_old_files(startup_chkp_num, true);
 
+#if PG_VERSION_NUM >= 140000
 	if (!recovery_single)
 	{
 		workers_pool = palloc0(sizeof(RecoveryWorkerState) * (recovery_workers + 1));
@@ -575,6 +576,7 @@ o_recovery_start_hook(void)
 				elog(ERROR, "unable to attach recovery workers to shm queue");
 		}
 	}
+#endif
 
 /*	if (enable_stopevents)
 	{

@@ -346,15 +346,20 @@ _PG_init(void)
 							"Sets the number of recovery workers.",
 							NULL,
 							&recovery_idx_pool_size_guc,
+#if PG_VERSION_NUM >= 140000
 							3,
 							1,
 							128,
+#else
+							0,
+							0,
+							0,
+#endif
 							PGC_POSTMASTER,
 							0,
 							NULL,
 							NULL,
 							NULL);
-
 	/*
 	 * This variable added because we need values less than minimum value of
 	 * checkpoint_timeout(30s) for tests.

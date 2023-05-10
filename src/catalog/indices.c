@@ -1260,13 +1260,13 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num, 
 
 	buildstate.btleader = NULL;
 
-#if PG_VERSION_NUM >= 140000
 	/*
 	 * In main recovery worker send message to main index creation worker in dedicated recovery workers pool and
 	 * exit
 	 */
 	if (is_recovery_in_progress() && !(*recovery_single_process) && !in_dedicated_recovery_worker)
 	{
+#if PG_VERSION_NUM >= 140000
 		int		 	o_table_size = 0;
 		Pointer 	o_table_serialized;
 
@@ -1291,8 +1291,9 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num, 
 
 		pfree(o_table_serialized);
 		return;
-	}
 #endif
+	}
+
 
 	/* Attempt to launch parallel worker scan when required */
 	if (nParallelWorkers > 0)
