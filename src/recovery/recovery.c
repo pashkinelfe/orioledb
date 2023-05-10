@@ -536,11 +536,12 @@ o_recovery_start_hook(void)
 	startup_chkp_num = checkpoint_state->lastCheckpointNumber;
 	recovery_cleanup_old_files(startup_chkp_num, true);
 
-	if (!recovery_single && recovery_idx_pool_size_guc)
+	if (!recovery_single)
 	{
-		workers_pool = palloc0(sizeof(RecoveryWorkerState) * (recovery_workers + 1));
+		int finish = recovery_idx_pool_size_guc ? index_build_leader : recovery_last_worker;
+		workers_pool = palloc0(sizeof(RecoveryWorkerState) * (finish + 1));
 
-		for (i = recovery_first_worker; i <= index_build_leader ; i++)
+		for (i = recovery_first_worker; i <= finish ; i++)
 		{
 			state = &workers_pool[i];
 			shm_mq_set_sender(GET_WORKER_QUEUE(i), MyProc);
@@ -566,7 +567,7 @@ o_recovery_start_hook(void)
 			state->queue = shm_mq_attach(GET_WORKER_QUEUE(i), NULL, workers_pool[i].handle);
 			state->queue_buf_len = 0;
 		}
-		for (i = 0; i < index_build_leader; i++)
+		for (i = 0; i <= recovery_last_worker; i++)
 		{
 			if (shm_mq_wait_for_attach(workers_pool[i].queue) != SHM_MQ_SUCCESS)
 				elog(ERROR, "unable to attach recovery workers to shm queue");
