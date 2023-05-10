@@ -536,12 +536,9 @@ o_recovery_start_hook(void)
 	startup_chkp_num = checkpoint_state->lastCheckpointNumber;
 	recovery_cleanup_old_files(startup_chkp_num, true);
 
-#if PG_VERSION_NUM >= 140000
-	if (!recovery_single)
+	if (!recovery_single && recovery_idx_pool_size_guc)
 	{
 		workers_pool = palloc0(sizeof(RecoveryWorkerState) * (recovery_workers + 1));
-//		recovery_oidxshared->worker_handle = palloc0(sizeof(BgWorkerHandle) *
-//				(recovery_pool_size_guc + recovery_idx_pool_size_guc));
 
 		for (i = recovery_first_worker; i <= index_build_leader ; i++)
 		{
@@ -568,7 +565,6 @@ o_recovery_start_hook(void)
 			}
 			state->queue = shm_mq_attach(GET_WORKER_QUEUE(i), NULL, workers_pool[i].handle);
 			state->queue_buf_len = 0;
-//			memcpy(&recovery_oidxshared->worker_handle[i], workers_pool[i].handle, sizeof(BgWorkerHandle));
 		}
 		for (i = 0; i < index_build_leader; i++)
 		{
@@ -576,7 +572,6 @@ o_recovery_start_hook(void)
 				elog(ERROR, "unable to attach recovery workers to shm queue");
 		}
 	}
-#endif
 
 /*	if (enable_stopevents)
 	{
