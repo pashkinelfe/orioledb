@@ -844,6 +844,7 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 
 		if (btshared->nrecoveryworkers != 0)
 		{
+			recovery_send_o_table(o_table_serialized, o_table_size, false);
 			tuplesort_initialize_shared(sharedsort, btshared->scantuplesortstates, NULL);
 		}
 
@@ -889,9 +890,6 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 		WaitForParallelWorkersToAttach(pcxt);
 	else
 	{
-#if PG_VERSION_NUM >= 140000
-		recovery_send_o_table(o_table_serialized, o_table_size, false);
-#endif
 		while(btshared->nrecoveryworkersjoined < btshared->nrecoveryworkers)
 			ConditionVariableSleep(&btshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
 
