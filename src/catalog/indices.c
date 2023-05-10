@@ -636,11 +636,11 @@ o_define_index(Relation rel, Oid indoid, bool reindex,
 		LWLockRelease(&checkpoint_state->oTablesAddLock);
 }
 
-#if PG_VERSION_NUM >= 140000
 /* Send o_table to all recovery workers */
 static void
 recovery_send_o_table(Pointer o_table_serialized, int o_table_size, bool send_to_leader)
 {
+#if PG_VERSION_NUM >= 140000
 	RecoveryMsgIdxBuild *cur_chunk;
 	uint64				sent_net_size = 0,
 						cur_net_size,
@@ -677,8 +677,9 @@ recovery_send_o_table(Pointer o_table_serialized, int o_table_size, bool send_to
 	}
 
 	pfree(cur_chunk);
-}
 #endif
+}
+
 
 /*
  * Invoke workers for leader. For non-recovery create parallel context and launch
@@ -1259,51 +1260,44 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num, 
 
 	buildstate.btleader = NULL;
 
+#if PG_VERSION_NUM >= 140000
+	/*
+	 * In main recovery worker send message to main index creation worker in dedicated recovery workers pool and
+	 * exit
+	 */
+	if (is_recovery_in_progress() && !(*recovery_single_process) && !in_dedicated_recovery_worker)
+	{
+		int		 	o_table_size = 0;
+		Pointer 	o_table_serialized;
+
+		/* If other index build is in progress, wait until it finishes */
+		while (recovery_oidxshared->recoveryidxbuild)
+			ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+
+		ConditionVariableCancelSleep();
+
+		o_table_serialized = serialize_o_table(o_table, &o_table_size);
+		recovery_oidxshared->ix_num = ix_num;
+
+		/* Prevent rel modify during index build */
+		SpinLockAcquire(&recovery_oidxshared->mutex);
+		recovery_oidxshared->oids = descr->oids;
+		recovery_oidxshared->recoveryleaderstarted = false;
+		recovery_oidxshared->recoveryidxbuild_modify = true;
+		recovery_oidxshared->recoveryidxbuild = true;
+		SpinLockRelease(&recovery_oidxshared->mutex);
+
+		/* Send recovery message to become a leader */
+		recovery_send_o_table(o_table_serialized, o_table_size, true);
+
+		pfree(o_table_serialized);
+		return;
+	}
+#endif
+
 	/* Attempt to launch parallel worker scan when required */
 	if (nParallelWorkers > 0)
 	{
-		/*
-		 * Don't proceed parallel index creation in main recovery worker.
-		 * Send message to main index creation worker in dedicated recovery workers pool
-		 */
-
-#if PG_VERSION_NUM >= 140000
-		if (is_recovery_in_progress() && !(*recovery_single_process) && !in_dedicated_recovery_worker)
-		{
-			int		 	o_table_size = 0;
-			Pointer 	o_table_serialized;
-
-			/* If other index build is in progress, wait until it finishes */
-			while (recovery_oidxshared->recoveryidxbuild)
-				ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
-
-			ConditionVariableCancelSleep();
-
-			o_table_serialized = serialize_o_table(o_table, &o_table_size);
-			recovery_oidxshared->ix_num = ix_num;
-
-			/* Prevent rel modify during index build */
-			SpinLockAcquire(&recovery_oidxshared->mutex);
-			recovery_oidxshared->oids = descr->oids;
-			recovery_oidxshared->recoveryleaderstarted = false;
-			recovery_oidxshared->recoveryidxbuild_modify = true;
-			recovery_oidxshared->recoveryidxbuild = true;
-			SpinLockRelease(&recovery_oidxshared->mutex);
-
-			/* Send recovery message to become a leader */
-			recovery_send_o_table(o_table_serialized, o_table_size, true);
-			/* Wait while leader initializes, then send message to workers to join */
-//			while(!recovery_oidxshared->recoveryleaderstarted)
-//				ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
-//
-//			ConditionVariableCancelSleep();
-//			/* Send recovery message to workers to join */
-//			recovery_send_o_table(o_table_serialized, o_table_size, false);
-
-			pfree(o_table_serialized);
-			return;
-		}
-#endif
 		index_tuples = palloc0(sizeof(double));
 
 		btspool = (oIdxSpool *) palloc0(sizeof(oIdxSpool));
