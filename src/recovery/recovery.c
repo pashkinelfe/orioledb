@@ -635,7 +635,7 @@ o_recovery_finish_hook(bool cleanup)
 {
 	RecoveryWorkerState *state;
 	int			i,
-				num_workers = recovery_pool_size_guc + 1;
+				num_workers = recovery_idx_pool_size_guc ? recovery_pool_size_guc + 1 : recovery_pool_size_guc;
 	bool		recovery_single;
 
 	recovery_single = *recovery_single_process;
