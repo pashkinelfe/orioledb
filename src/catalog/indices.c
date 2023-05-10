@@ -1282,7 +1282,6 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num, 
 		/* Prevent rel modify during index build */
 		SpinLockAcquire(&recovery_oidxshared->mutex);
 		recovery_oidxshared->oids = descr->oids;
-		recovery_oidxshared->recoveryleaderstarted = false;
 		recovery_oidxshared->recoveryidxbuild_modify = true;
 		recovery_oidxshared->recoveryidxbuild = true;
 		SpinLockRelease(&recovery_oidxshared->mutex);

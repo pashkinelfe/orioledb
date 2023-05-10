@@ -77,8 +77,6 @@ typedef struct oIdxShared
 	ConditionVariable workersdonecv;
 
 	ConditionVariable recoverycv;
-	/* Wait until recovery leader init shared state */
-	bool recoveryleaderstarted;
 	/* Don't start next index build in recovery while current is in progress */
 	bool recoveryidxbuild;
 	/* Exclude relation with index being built in recovery from applying recovery modify messages

@@ -333,10 +333,6 @@ recovery_shmem_init(Pointer ptr, bool found)
 
 	recovery_oidxshared = (oIdxShared *) ptr;
 	ptr += CACHELINEALIGN(_o_index_parallel_estimate_shared(0));
-	ConditionVariableInit(&recovery_oidxshared->recoverycv);
-	recovery_oidxshared->recoveryleaderstarted = false;
-	recovery_oidxshared->recoveryidxbuild = false;
-	recovery_oidxshared->recoveryidxbuild_modify = false;
 
 	recovery_sharedsort = (Sharedsort *) ptr;
 	ptr += CACHELINEALIGN(tuplesort_estimate_shared(recovery_idx_pool_size_guc + 1));
@@ -368,6 +364,9 @@ recovery_shmem_init(Pointer ptr, bool found)
 		pg_atomic_init_u64(recovery_main_retain_ptr, InvalidXLogRecPtr);
 		pg_atomic_init_u64(recovery_finished_list_ptr, InvalidXLogRecPtr);
 
+		ConditionVariableInit(&recovery_oidxshared->recoverycv);
+		recovery_oidxshared->recoveryidxbuild = false;
+		recovery_oidxshared->recoveryidxbuild_modify = false;
 	}
 }
 
