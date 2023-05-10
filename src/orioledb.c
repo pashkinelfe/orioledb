@@ -343,7 +343,7 @@ _PG_init(void)
 							NULL);
 
 	DefineCustomIntVariable("orioledb.recovery_idx_pool_size",
-							"Sets the number of recovery workers.",
+							"Sets the number of recovery index build workers.",
 							NULL,
 							&recovery_idx_pool_size_guc,
 #if PG_VERSION_NUM >= 140000

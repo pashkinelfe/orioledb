@@ -2269,8 +2269,20 @@ workers_send_finish(bool send_to_idx_pool)
 	RecoveryMsgEmpty finish_msg;
 	RecoveryWorkerState *state;
 	int			i;
-	int			start = send_to_idx_pool ? index_build_first_worker : 0;
-	int 		finish = send_to_idx_pool ? index_build_last_worker : recovery_pool_size_guc;
+	int			start,
+				finish;
+
+	if (send_to_idx_pool)
+	{
+		Assert(recovery_idx_pool_size_guc);
+		start = index_build_first_worker;
+		finish = index_build_last_worker;
+	}
+	else
+	{
+		start = 0;
+		finish = recovery_idx_pool_size_guc ? index_build_leader : recovery_last_worker;
+	}
 
 	for (i = start; i <= finish; i++)
 	{
