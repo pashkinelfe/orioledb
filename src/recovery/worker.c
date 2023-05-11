@@ -410,7 +410,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 						recovery_oidxshared->recoveryidxbuild_modify = false;
 						recovery_oidxshared->recoveryidxbuild = false;
 						ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
-						o_free_tmp_table_descr(descr);
+						o_free_tmp_table_descr(o_descr);
 						pfree(o_descr);
 						pfree(o_table);
 					}
