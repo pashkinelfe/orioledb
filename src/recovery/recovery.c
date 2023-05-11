@@ -624,7 +624,7 @@ orioledb_redo(XLogReaderState *record)
 
 	if (unexpected_worker_detach)
 	{
-		abort_recovery(workers_pool, recovery_pool_size_guc);
+		abort_recovery(workers_pool, false);
 		elog(ERROR, "orioledb recovery worker detached unexpectedly.");
 	}
 }

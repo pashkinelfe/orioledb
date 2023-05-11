@@ -393,7 +393,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 					else if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD)
 					{
 						OTable 		*o_table;
-						OTableDescr *descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
+						OTableDescr *o_descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
 
 						Assert(id == index_build_leader);
 						/*
@@ -401,8 +401,8 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 						 * workers and become their leader
 						 */
 						o_table = deserialize_o_table(o_table_serialized, actual_table_size);
-						o_fill_tmp_table_descr(descr, o_table);
-						build_secondary_index(o_table, descr, recovery_oidxshared->ix_num, true);
+						o_fill_tmp_table_descr(o_descr, o_table);
+						build_secondary_index(o_table, o_descr, recovery_oidxshared->ix_num, true);
 						/*
 						 * Wakeup other recovery workers that may wait to do their modify operations on
 						 * this relation
@@ -411,7 +411,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 						recovery_oidxshared->recoveryidxbuild = false;
 						ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
 						o_free_tmp_table_descr(descr);
-						pfree(descr);
+						pfree(o_descr);
 						pfree(o_table);
 					}
 					pfree(o_table_serialized);
