@@ -2060,7 +2060,7 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 				o_insert_shared_root_placeholder(new_o_table->indices[ix_num].oids.datoid,
 												 new_o_table->indices[ix_num].oids.relnode);
 				o_tables_meta_unlock_no_wal();
-				build_secondary_index(new_o_table, &tmp_descr, ix_num);
+				build_secondary_index(new_o_table, &tmp_descr, ix_num, false);
 			}
 			o_free_tmp_table_descr(&tmp_descr);
 		}

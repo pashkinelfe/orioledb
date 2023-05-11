@@ -649,7 +649,7 @@ o_define_index(Relation rel, Oid indoid, bool reindex,
 		}
 		else
 		{
-			build_secondary_index(o_table, descr, ix_num);
+			build_secondary_index(o_table, descr, ix_num, false);
 		}
 	}
 	else
@@ -1169,7 +1169,7 @@ build_secondary_index_worker_sort(oIdxSpool *btspool, void *bt_shared, Sharedsor
 	}
 
 	/* Begin "partial" tuplesort */
-	btspool->sortstates = palloc0(sizeof(Tuplesortstate));
+	btspool->sortstates = palloc0(sizeof(Pointer));
 	btspool->sortstates[0] = tuplesort_begin_orioledb_index(idx, work_mem, false, coordinate);
 
 	build_secondary_index_worker_heap_scan(btspool->descr, idx, poscan, btspool->sortstates, progress, &heaptuples, &indtuples);
@@ -1197,7 +1197,7 @@ build_secondary_index_worker_sort(oIdxSpool *btspool, void *bt_shared, Sharedsor
 
 	pfree(indtuples);
 	/* We can end tuplesorts immediately */
-	tuplesort_end_orioledb_index(btspool->sortstates[0]);
+	tuplesort_end(btspool->sortstates[0]);
 	pfree(btspool->sortstates);
 }
 
@@ -1357,7 +1357,7 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num, 
 		/* Serial build */
 		Tuplesortstate **sortstates;
 
-		sortstates = palloc0(sizeof(Tuplesortstate));
+		sortstates = palloc0(sizeof(Pointer));
 		sortstates[0] = sortstate;
 		build_secondary_index_worker_heap_scan(descr, idx, NULL, sortstates, false, &heap_tuples, &index_tuples);
 		pfree(sortstates);
