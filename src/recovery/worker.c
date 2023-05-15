@@ -364,8 +364,8 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 			else if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD )
 			{
 				RecoveryOidsMsgIdxBuild     *msg = (RecoveryOidsMsgIdxBuild *) (data + data_pos);
-				OTable                                  *o_table;
-ORelOids                                oids;
+				OTable                                 *o_table;
+				ORelOids                                oids;
 				OTableDescr *descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
 
 				Assert(data_pos == 0);
@@ -373,6 +373,7 @@ ORelOids                                oids;
 				Assert(ORelOidsIsValid(oids));
 				Assert(id == index_build_leader);
 
+				o_table = o_tables_get(oids);
 				o_fill_tmp_table_descr(descr, o_table);
 				build_secondary_index(o_table, descr, recovery_oidxshared->ix_num, true);
 				/*
