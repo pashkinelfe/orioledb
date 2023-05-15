@@ -361,7 +361,32 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				data_pos += tuple_len;
 			}
 #if PG_VERSION_NUM >= 140000
-			else if (recovery_header->type & (RECOVERY_LEADER_PARALLEL_INDEX_BUILD | RECOVERY_WORKER_PARALLEL_INDEX_BUILD ))
+			else if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD )
+			{
+				RecoveryOidsMsgIdxBuild     *msg = (RecoveryOidsMsgIdxBuild *) (data + data_pos);
+				OTable                                  *o_table;
+ORelOids                                oids;
+				OTableDescr *descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
+
+				Assert(data_pos == 0);
+				memcpy(&oids, &msg->oids, sizeof(ORelOids));
+				Assert(ORelOidsIsValid(oids));
+				Assert(id == index_build_leader);
+
+				o_fill_tmp_table_descr(descr, o_table);
+				build_secondary_index(o_table, descr, recovery_oidxshared->ix_num, true);
+				/*
+				 * Wakeup other recovery workers that may wait to do their modify operations on
+				 * this relation
+				 */
+				recovery_oidxshared->recoveryidxbuild_modify = false;
+				recovery_oidxshared->recoveryidxbuild = false;
+				ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
+				o_free_tmp_table_descr(descr);
+				pfree(descr);
+				pfree(o_table);
+			}
+			else if (recovery_header->type & RECOVERY_WORKER_PARALLEL_INDEX_BUILD )
 			{
 				RecoveryMsgIdxBuild 	*msg = (RecoveryMsgIdxBuild *) (data + data_pos);
 				Size 					cur_chunk_size = data_size - offsetof(RecoveryMsgIdxBuild, o_table_serialized);
@@ -390,6 +415,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 						/* participate as a worker in parallel index build */
 						_o_index_parallel_build_inner(NULL, NULL, o_table_serialized, actual_table_size);
 					}
+#if 0
 					else if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD)
 					{
 						OTable 		*o_table;
@@ -414,6 +440,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 						pfree(o_descr);
 						pfree(o_table);
 					}
+#endif
 					pfree(o_table_serialized);
 					actual_table_size = 0;
 				}

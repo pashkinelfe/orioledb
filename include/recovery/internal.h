@@ -88,6 +88,12 @@ typedef struct
 typedef struct
 {
 	RecoveryMsgHeader header;
+	ORelOids                  oids;
+} RecoveryOidsMsgIdxBuild;
+
+typedef struct
+{
+	RecoveryMsgHeader header;
 } RecoveryMsgEmpty;
 
 typedef struct

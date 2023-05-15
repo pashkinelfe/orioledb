@@ -1986,6 +1986,33 @@ clean_workers_oids(void)
 }
 
 static void
+recovery_send_oids(ORelOids oids, bool send_to_leader)
+{
+	RecoveryOidsMsgIdxBuild *msg;
+	int                             i;
+
+	Assert(!(*recovery_single_process));
+	Assert(ORelOidsIsValid(oids));
+	msg = palloc0(sizeof(RecoveryOidsMsgIdxBuild));
+	msg->header.type = send_to_leader ? RECOVERY_LEADER_PARALLEL_INDEX_BUILD : RECOVERY_WORKER_PARALLEL_INDEX_BUILD;
+	memcpy(&msg->oids, &oids, sizeof(ORelOids));
+	if (send_to_leader)
+	{
+		worker_send_msg(index_build_leader, (Pointer) msg, sizeof(RecoveryOidsMsgIdxBuild));
+		worker_queue_flush(index_build_leader);
+	}
+	else
+	{
+		for (i = index_build_first_worker; i <= index_build_last_worker; i++)
+		{
+			worker_send_msg(i, (Pointer) msg, sizeof(RecoveryOidsMsgIdxBuild));
+			worker_queue_flush(i);
+		}
+	}
+	pfree(msg);
+}
+
+static void
 handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 {
 	if (!cur_state->o_tables_meta_locked)
@@ -2060,7 +2087,39 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 				o_insert_shared_root_placeholder(new_o_table->indices[ix_num].oids.datoid,
 												 new_o_table->indices[ix_num].oids.relnode);
 				o_tables_meta_unlock_no_wal();
+
+				Assert(is_recovery_in_progress());
+#if PG_VERSION_NUM >= 140000
+
+				/*
+				 * In main recovery worker send message to main index creation worker in dedicated recovery workers pool and
+				 * exit
+				 */
+				if (! *recovery_single_process)
+				{
+					/* If other index build is in progress, wait until it finishes */
+					while (recovery_oidxshared->recoveryidxbuild)
+						ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+
+					ConditionVariableCancelSleep();
+
+					recovery_oidxshared->ix_num = ix_num;
+
+					/* Prevent rel modify during index build */
+					SpinLockAcquire(&recovery_oidxshared->mutex);
+					recovery_oidxshared->oids = old_o_table->oids;
+					recovery_oidxshared->recoveryidxbuild_modify = true;
+					recovery_oidxshared->recoveryidxbuild = true;
+					SpinLockRelease(&recovery_oidxshared->mutex);
+
+					/* Send recovery message to become a leader */
+					recovery_send_oids(old_o_table->oids, true);
+				}
+				else
+					build_secondary_index(new_o_table, &tmp_descr, ix_num, false);
+#else
 				build_secondary_index(new_o_table, &tmp_descr, ix_num, false);
+#endif
 			}
 			o_free_tmp_table_descr(&tmp_descr);
 		}
