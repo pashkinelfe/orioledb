@@ -1986,7 +1986,7 @@ clean_workers_oids(void)
 }
 
 static void
-recovery_send_oids(ORelOids oids, bool send_to_leader)
+recovery_send_oids(ORelOids oids, OIndexNumber ix_num, Oid ix_oid, Oid ix_relnode, bool send_to_leader)
 {
 	RecoveryOidsMsgIdxBuild *msg;
 	int                             i;
@@ -1996,6 +1996,9 @@ recovery_send_oids(ORelOids oids, bool send_to_leader)
 	msg = palloc0(sizeof(RecoveryOidsMsgIdxBuild));
 	msg->header.type = send_to_leader ? RECOVERY_LEADER_PARALLEL_INDEX_BUILD : RECOVERY_WORKER_PARALLEL_INDEX_BUILD;
 	memcpy(&msg->oids, &oids, sizeof(ORelOids));
+	msg->ix_num = ix_num;
+	msg->ix_oid = ix_oid;
+	msg->ix_relnode = ix_relnode;
 	if (send_to_leader)
 	{
 		worker_send_msg(index_build_leader, (Pointer) msg, sizeof(RecoveryOidsMsgIdxBuild));
@@ -2107,13 +2110,14 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 
 					/* Prevent rel modify during index build */
 					SpinLockAcquire(&recovery_oidxshared->mutex);
-					recovery_oidxshared->oids = old_o_table->oids;
+					recovery_oidxshared->oids = new_o_table->oids;
 					recovery_oidxshared->recoveryidxbuild_modify = true;
 					recovery_oidxshared->recoveryidxbuild = true;
 					SpinLockRelease(&recovery_oidxshared->mutex);
 
 					/* Send recovery message to become a leader */
-					recovery_send_oids(old_o_table->oids, true);
+					recovery_send_oids(new_o_table->oids, ix_num, new_o_table->indices[ix_num].oids.datoid,
+									   new_o_table->indices[ix_num].oids.relnode, true);
 				}
 				else
 					build_secondary_index(new_o_table, &tmp_descr, ix_num, false);

@@ -372,8 +372,11 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				memcpy(&oids, &msg->oids, sizeof(ORelOids));
 				Assert(ORelOidsIsValid(oids));
 				Assert(id == index_build_leader);
+				Assert(msg->ix_num == recovery_oidxshared->ix_num);
 
 				o_table = o_tables_get(oids);
+				o_table->indices[msg->ix_num].oids.datoid = msg->ix_oid;
+				o_table->indices[msg->ix_num].oids.relnode = msg->ix_relnode;
 				o_fill_tmp_table_descr(descr, o_table);
 				build_secondary_index(o_table, descr, recovery_oidxshared->ix_num, true);
 				/*
