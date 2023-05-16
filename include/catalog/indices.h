@@ -139,7 +139,7 @@ extern void assign_new_oids(OTable *oTable, Relation rel);
 extern void recreate_o_table(OTable *old_o_table, OTable *o_table);
 extern void build_secondary_index(OTable *o_table, OTableDescr *descr,
 								  OIndexNumber ix_num, bool in_dedicated_recovery_worker);
-extern void _o_index_parallel_build_main(dsm_segment *seg, shm_toc *toc);
+PGDLLEXPORT void _o_index_parallel_build_main(dsm_segment *seg, shm_toc *toc);
 extern void _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 										  char *o_table_serialized, Size o_table_size);
 extern Size _o_index_parallel_estimate_shared(Size o_table_size);

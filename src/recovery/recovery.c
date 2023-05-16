@@ -2108,11 +2108,8 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 
 					ConditionVariableCancelSleep();
 
-					recovery_oidxshared->ix_num = ix_num;
-
 					/* Prevent rel modify during index build */
 					SpinLockAcquire(&recovery_oidxshared->mutex);
-					recovery_oidxshared->oids = new_o_table->oids;
 					recovery_oidxshared->recoveryidxbuild_modify = true;
 					recovery_oidxshared->recoveryidxbuild = true;
 					SpinLockRelease(&recovery_oidxshared->mutex);

@@ -372,18 +372,23 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				memcpy(&oids, &msg->oids, sizeof(ORelOids));
 				Assert(ORelOidsIsValid(oids));
 				Assert(id == index_build_leader);
-				Assert(msg->ix_num == recovery_oidxshared->ix_num);
 
 				o_table = o_tables_get(oids);
 				Assert(o_table);
 				o_table->indices[msg->ix_num].oids.datoid = msg->ix_oid;
 				o_table->indices[msg->ix_num].oids.relnode = msg->ix_relnode;
 				o_fill_tmp_table_descr(descr, o_table);
+
+				recovery_oidxshared->oids = oids;
+				Assert(recovery_oidxshared->ix_num == 0);
+				recovery_oidxshared->ix_num = msg->ix_num;
 				build_secondary_index(o_table, descr, msg->ix_num, true);
 				/*
 				 * Wakeup other recovery workers that may wait to do their modify operations on
 				 * this relation
 				 */
+				ORelOidsSetInvalid(recovery_oidxshared->oids);
+				recovery_oidxshared->ix_num = 0;
 				recovery_oidxshared->recoveryidxbuild_modify = false;
 				recovery_oidxshared->recoveryidxbuild = false;
 				ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
