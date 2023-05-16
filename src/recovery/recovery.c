@@ -1985,6 +1985,7 @@ clean_workers_oids(void)
 	}
 }
 
+#if PG_VERSION_NUM >= 140000
 static void
 recovery_send_oids(ORelOids oids, OIndexNumber ix_num, Oid ix_oid, Oid ix_relnode, bool send_to_leader)
 {
@@ -2014,6 +2015,7 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, Oid ix_oid, Oid ix_relnod
 	}
 	pfree(msg);
 }
+#endif
 
 static void
 handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
