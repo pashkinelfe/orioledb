@@ -2115,7 +2115,7 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 					SpinLockRelease(&recovery_oidxshared->mutex);
 
 					/* Send recovery message to become a leader */
-					recovery_send_oids(new_o_table->oids, ix_num, new_o_table->indices[ix_num].oids.datoid,
+					recovery_send_oids(oids, ix_num, new_o_table->indices[ix_num].oids.datoid,
 									   new_o_table->indices[ix_num].oids.relnode, true);
 				}
 				else
