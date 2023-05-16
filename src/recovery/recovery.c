@@ -2000,6 +2000,9 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, Oid ix_oid, Oid ix_relnod
 	msg->ix_num = ix_num;
 	msg->ix_oid = ix_oid;
 	msg->ix_relnode = ix_relnode;
+
+	Assert(o_tables_get(msg->oids) != NULL);
+
 	if (send_to_leader)
 	{
 		worker_send_msg(index_build_leader, (Pointer) msg, sizeof(RecoveryOidsMsgIdxBuild));
