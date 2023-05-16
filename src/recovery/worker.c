@@ -393,6 +393,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				o_free_tmp_table_descr(o_descr);
 				pfree(o_descr);
 				pfree(o_table);
+				data_pos += data_size;
 			}
 			else if (recovery_header->type & RECOVERY_WORKER_PARALLEL_INDEX_BUILD )
 			{
@@ -416,39 +417,10 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 
 				if (actual_table_size == expected_table_size)
 				{
-					if (recovery_header->type & RECOVERY_WORKER_PARALLEL_INDEX_BUILD)
-					{
-						Assert(expected_table_size == recovery_oidxshared->o_table_size);
-						Assert(index_build_first_worker <= id && id <= index_build_last_worker);
-						/* participate as a worker in parallel index build */
-						_o_index_parallel_build_inner(NULL, NULL, o_table_serialized, actual_table_size);
-					}
-#if 0
-					else if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD)
-					{
-						OTable 		*o_table;
-						OTableDescr *o_descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
-
-						Assert(id == index_build_leader);
-						/*
-						 * start a parallel index build in a dedicated pool of recovery
-						 * workers and become their leader
-						 */
-						o_table = deserialize_o_table(o_table_serialized, actual_table_size);
-						o_fill_tmp_table_descr(o_descr, o_table);
-						build_secondary_index(o_table, o_descr, recovery_oidxshared->ix_num, true);
-						/*
-						 * Wakeup other recovery workers that may wait to do their modify operations on
-						 * this relation
-						 */
-						recovery_oidxshared->recoveryidxbuild_modify = false;
-						recovery_oidxshared->recoveryidxbuild = false;
-						ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
-						o_free_tmp_table_descr(o_descr);
-						pfree(o_descr);
-						pfree(o_table);
-					}
-#endif
+					Assert(expected_table_size == recovery_oidxshared->o_table_size);
+					Assert(index_build_first_worker <= id && id <= index_build_last_worker);
+					/* participate as a worker in parallel index build */
+					_o_index_parallel_build_inner(NULL, NULL, o_table_serialized, actual_table_size);
 					pfree(o_table_serialized);
 					actual_table_size = 0;
 				}
