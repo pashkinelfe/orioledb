@@ -350,7 +350,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 					{
 						while(recovery_oidxshared->recoveryidxbuild_modify)
 							ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
-
+						Assert(!ORelOidsIsValid(recovery_oidxshared->oids));
 						ConditionVariableCancelSleep();
 					}
 #endif
@@ -364,25 +364,23 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 			else if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD )
 			{
 				RecoveryOidsMsgIdxBuild     *msg = (RecoveryOidsMsgIdxBuild *) (data + data_pos);
-				OTable                                 *o_table;
-				ORelOids                                oids;
-				OTableDescr *descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
+				OTable      				*o_table;
+				OTableDescr 				*o_descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
 
 				Assert(data_pos == 0);
-				memcpy(&oids, &msg->oids, sizeof(ORelOids));
-				Assert(ORelOidsIsValid(oids));
+				Assert(ORelOidsIsValid(msg->oids));
 				Assert(id == index_build_leader);
 
-				o_table = o_tables_get(oids);
+				o_table = o_tables_get(msg->oids);
 				Assert(o_table);
 				o_table->indices[msg->ix_num].oids.datoid = msg->ix_oid;
 				o_table->indices[msg->ix_num].oids.relnode = msg->ix_relnode;
-				o_fill_tmp_table_descr(descr, o_table);
+				o_fill_tmp_table_descr(o_descr, o_table);
 
-				recovery_oidxshared->oids = oids;
+				recovery_oidxshared->oids = msg->oids;
 				Assert(recovery_oidxshared->ix_num == 0);
 				recovery_oidxshared->ix_num = msg->ix_num;
-				build_secondary_index(o_table, descr, msg->ix_num, true);
+				build_secondary_index(o_table, o_descr, msg->ix_num, true);
 				/*
 				 * Wakeup other recovery workers that may wait to do their modify operations on
 				 * this relation
@@ -392,8 +390,8 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				recovery_oidxshared->recoveryidxbuild_modify = false;
 				recovery_oidxshared->recoveryidxbuild = false;
 				ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
-				o_free_tmp_table_descr(descr);
-				pfree(descr);
+				o_free_tmp_table_descr(o_descr);
+				pfree(o_descr);
 				pfree(o_table);
 			}
 			else if (recovery_header->type & RECOVERY_WORKER_PARALLEL_INDEX_BUILD )
