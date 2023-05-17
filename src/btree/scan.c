@@ -1156,6 +1156,7 @@ btree_seq_scan_get_tuple_from_iterator(BTreeSeqScan *scan,
 	{
 		btree_iterator_free(scan->iter);
 		scan->iter = NULL;
+		scan->haveHistImg = false;
 	}
 	return result;
 }
@@ -1500,6 +1501,7 @@ btree_seq_scan_get_tuple_from_iterator_raw(BTreeSeqScan *scan,
 	{
 		btree_iterator_free(scan->iter);
 		scan->iter = NULL;
+		scan->haveHistImg = false;
 	}
 	return result;
 }
