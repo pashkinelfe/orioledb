@@ -469,13 +469,12 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 #if PG_VERSION_NUM >= 140000
 				if (id == index_build_leader)
 				{
+					while(recovery_oidxshared->recoveryidxbuild_modify)
+						ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+
+					ConditionVariableCancelSleep();
 					idx_workers_shutdown();
 				}
-
-				while(recovery_oidxshared->recoveryidxbuild_modify)
-					ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
-
-				ConditionVariableCancelSleep();
 #endif
 				finished = true;
 				break;
