@@ -342,13 +342,16 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				if (indexDescr != NULL)
 				{
 					Assert(ORelOidsIsValid(oids));
+					ORelOids    debug_oids1 = recovery_oidxshared->oids;
+					ORelOids	debug_oids2;
 
 					tuple.data = data + data_pos;
 #if PG_VERSION_NUM >= 140000
 					/* If index is now being built for a relation, wait until it finished before modifying it */
 					if (ORelOidsIsEqual(oids, recovery_oidxshared->oids))
 					{
-						while(recovery_oidxshared->recoveryidxbuild_modify)
+					debug_oids2 = recovery_oidxshared->oids;
+					while(recovery_oidxshared->recoveryidxbuild_modify)
 							ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
 						Assert(!ORelOidsIsValid(recovery_oidxshared->oids));
 						ConditionVariableCancelSleep();
