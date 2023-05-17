@@ -92,6 +92,7 @@ typedef struct
 	OIndexNumber	ix_num;
 	Oid ix_oid;
 	Oid ix_relnode;
+	int		nindices;
 } RecoveryOidsMsgIdxBuild;
 
 typedef struct

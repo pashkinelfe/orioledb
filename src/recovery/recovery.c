@@ -1987,7 +1987,7 @@ clean_workers_oids(void)
 
 #if PG_VERSION_NUM >= 140000
 static void
-recovery_send_oids(ORelOids oids, OIndexNumber ix_num, Oid ix_oid, Oid ix_relnode, bool send_to_leader)
+recovery_send_oids(ORelOids oids, OIndexNumber ix_num, Oid ix_oid, Oid ix_relnode, int nindices, bool send_to_leader)
 {
 	RecoveryOidsMsgIdxBuild *msg;
 	int                             i;
@@ -2000,7 +2000,7 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, Oid ix_oid, Oid ix_relnod
 	msg->ix_num = ix_num;
 	msg->ix_oid = ix_oid;
 	msg->ix_relnode = ix_relnode;
-
+	msg->nindices = nindices;
 	Assert(o_tables_get(msg->oids) != NULL);
 
 	if (send_to_leader)
@@ -2119,7 +2119,7 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 
 					/* Send recovery message to become a leader */
 					recovery_send_oids(oids, ix_num, new_o_table->indices[ix_num].oids.datoid,
-									   new_o_table->indices[ix_num].oids.relnode, true);
+									   new_o_table->indices[ix_num].oids.relnode, nindices, true);
 				}
 				else
 					build_secondary_index(new_o_table, &tmp_descr, ix_num, false);
