@@ -391,13 +391,15 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 					 */
 					ORelOidsSetInvalid(recovery_oidxshared->oids);
 					recovery_oidxshared->ix_num = 0;
-					recovery_oidxshared->recoveryidxbuild_modify = false;
-					recovery_oidxshared->recoveryidxbuild = false;
-					ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
 					o_free_tmp_table_descr(o_descr);
 					pfree(o_table);
 				}
-				pfree(o_descr);
+			SpinLockAcquire(&recovery_oidxshared->mutex);
+			recovery_oidxshared->recoveryidxbuild_modify = false;
+			recovery_oidxshared->recoveryidxbuild = false;
+			SpinLockRelease(&recovery_oidxshared->mutex);
+			ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
+			pfree(o_descr);
 
 				data_pos += data_size;
 			}
