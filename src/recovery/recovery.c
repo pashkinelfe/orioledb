@@ -1999,9 +1999,9 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version, i
 	msg->header.type = send_to_leader ? RECOVERY_LEADER_PARALLEL_INDEX_BUILD : RECOVERY_WORKER_PARALLEL_INDEX_BUILD;
 	memcpy(&msg->oids, &oids, sizeof(ORelOids));
 	msg->ix_num = ix_num;
-//	msg->ix_oid = ix_oid;
-//	msg->ix_relnode = ix_relnode;
+#ifdef USE_ASSERT_CHECKING
 	msg->nindices = nindices;
+#endif
 	msg->recovery_oxid = recovery_oxid;
 	msg->o_table_version = o_table_version;
 	Assert(o_tables_get(msg->oids) != NULL);

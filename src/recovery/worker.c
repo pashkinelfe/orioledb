@@ -342,15 +342,15 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				if (indexDescr != NULL)
 				{
 					Assert(ORelOidsIsValid(oids));
-					ORelOids    debug_oids1 = recovery_oidxshared->oids;
-					ORelOids	debug_oids2;
+//					ORelOids    debug_oids1 = recovery_oidxshared->oids;
+//					ORelOids	debug_oids2;
 
 					tuple.data = data + data_pos;
 #if PG_VERSION_NUM >= 140000
 					/* If index is now being built for a relation, wait until it finished before modifying it */
 					if (ORelOidsIsEqual(oids, recovery_oidxshared->oids))
 					{
-					debug_oids2 = recovery_oidxshared->oids;
+					//debug_oids2 = recovery_oidxshared->oids;
 					while(recovery_oidxshared->recoveryidxbuild_modify)
 							ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
 						Assert(!ORelOidsIsValid(recovery_oidxshared->oids));
@@ -375,38 +375,25 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				Assert(id == index_build_leader);
 
 				recovery_switch_to_oxid(msg->recovery_oxid, id);
-				//recovery_oxid = msg->recovery_oxid;
+//				recovery_oxid = msg->recovery_oxid;
 				o_table = o_tables_get_by_oids_and_version(msg->oids, &msg->o_table_version);
 				o_fill_tmp_table_descr(o_descr, o_table);
-//				o_descr = o_fetch_table_descr(msg->oids);
 				Assert(o_table);
+				Assert(o_table->nindices == msg->nindices)
+				Assert(recovery_oidxshared->ix_num == 0);
+				Assert(!ORelOidsIsValid(recovery_oidxshared->oids));
+				recovery_oidxshared->ix_num = msg->ix_num;
+				recovery_oidxshared->oids = msg->oids;
 
-				if (o_table->nindices != msg->nindices)
-				{
-					volatile bool i=1;
-					while(i)
-						pg_usleep(100000L);
-				}
-
-				{
-//					o_table->indices[msg->ix_num].oids.datoid = msg->ix_oid;
-//					o_table->indices[msg->ix_num].oids.relnode = msg->ix_relnode;
-//					o_table->nindices = msg->nindices;
-//					o_fill_tmp_table_descr(o_descr, o_table);
-//					o_descr = o_fetch_table_descr(msg->oids);
-
-					recovery_oidxshared->oids = msg->oids;
-					Assert(recovery_oidxshared->ix_num == 0);
-					recovery_oidxshared->ix_num = msg->ix_num;
-					build_secondary_index(o_table, o_descr, msg->ix_num, true);
-					/*
-					 * Wakeup other recovery workers that may wait to do their modify operations on
-					 * this relation
-					 */
-					ORelOidsSetInvalid(recovery_oidxshared->oids);
-					recovery_oidxshared->ix_num = 0;
-					o_free_tmp_table_descr(o_descr);
-					pfree(o_table);
+				build_secondary_index(o_table, o_descr, msg->ix_num, true);
+				/*
+				 * Wakeup other recovery workers that may wait to do their modify operations on
+				 * this relation
+				 */
+				ORelOidsSetInvalid(recovery_oidxshared->oids);
+				recovery_oidxshared->ix_num = 0;
+				o_free_tmp_table_descr(o_descr);
+				pfree(o_table);
 				}
 			SpinLockAcquire(&recovery_oidxshared->mutex);
 			recovery_oidxshared->recoveryidxbuild_modify = false;
@@ -415,7 +402,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 			ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
 			pfree(o_descr);
 
-				data_pos += data_size;
+			data_pos += data_size;
 			}
 			else if (recovery_header->type & RECOVERY_WORKER_PARALLEL_INDEX_BUILD )
 			{
