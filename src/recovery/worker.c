@@ -375,6 +375,14 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				Assert(id == index_build_leader);
 
 				o_table = o_tables_get(msg->oids);
+				o_descr = o_fetch_table_descr(msg->oids);
+
+				{
+					volatile bool i=1;
+					while(i)
+						pg_usleep(100000L);
+				}
+
 				if(o_table)
 				{
 					o_table->indices[msg->ix_num].oids.datoid = msg->ix_oid;
