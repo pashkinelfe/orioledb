@@ -379,8 +379,9 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				{
 					o_table->indices[msg->ix_num].oids.datoid = msg->ix_oid;
 					o_table->indices[msg->ix_num].oids.relnode = msg->ix_relnode;
-					o_table->nindices = msg->nindices;
-					o_fill_tmp_table_descr(o_descr, o_table);
+//					o_table->nindices = msg->nindices;
+//					o_fill_tmp_table_descr(o_descr, o_table);
+					o_descr = o_fetch_table_descr(msg->oids);
 
 					recovery_oidxshared->oids = msg->oids;
 					Assert(recovery_oidxshared->ix_num == 0);
