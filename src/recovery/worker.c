@@ -374,22 +374,26 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				Assert(ORelOidsIsValid(msg->oids));
 				Assert(id == index_build_leader);
 
-				o_table = o_tables_get(msg->oids);
-				o_descr = o_fetch_table_descr(msg->oids);
+				recovery_switch_to_oxid(msg->recovery_oxid, id);
+				//recovery_oxid = msg->recovery_oxid;
+				o_table = o_tables_get_by_oids_and_version(msg->oids, &msg->o_table_version);
+				o_fill_tmp_table_descr(o_descr, o_table);
+//				o_descr = o_fetch_table_descr(msg->oids);
+				Assert(o_table);
 
+				if (o_table->nindices != msg->nindices)
 				{
 					volatile bool i=1;
 					while(i)
 						pg_usleep(100000L);
 				}
 
-				if(o_table)
 				{
-					o_table->indices[msg->ix_num].oids.datoid = msg->ix_oid;
-					o_table->indices[msg->ix_num].oids.relnode = msg->ix_relnode;
+//					o_table->indices[msg->ix_num].oids.datoid = msg->ix_oid;
+//					o_table->indices[msg->ix_num].oids.relnode = msg->ix_relnode;
 //					o_table->nindices = msg->nindices;
 //					o_fill_tmp_table_descr(o_descr, o_table);
-					o_descr = o_fetch_table_descr(msg->oids);
+//					o_descr = o_fetch_table_descr(msg->oids);
 
 					recovery_oidxshared->oids = msg->oids;
 					Assert(recovery_oidxshared->ix_num == 0);

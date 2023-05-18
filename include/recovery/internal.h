@@ -93,6 +93,8 @@ typedef struct
 	Oid ix_oid;
 	Oid ix_relnode;
 	int		nindices;
+	OXid 	recovery_oxid;
+	uint32 	o_table_version;
 } RecoveryOidsMsgIdxBuild;
 
 typedef struct

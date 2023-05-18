@@ -1987,7 +1987,8 @@ clean_workers_oids(void)
 
 #if PG_VERSION_NUM >= 140000
 static void
-recovery_send_oids(ORelOids oids, OIndexNumber ix_num, Oid ix_oid, Oid ix_relnode, int nindices, bool send_to_leader)
+recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version, int nindices,
+		bool send_to_leader)
 {
 	RecoveryOidsMsgIdxBuild *msg;
 	int                             i;
@@ -1998,9 +1999,11 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, Oid ix_oid, Oid ix_relnod
 	msg->header.type = send_to_leader ? RECOVERY_LEADER_PARALLEL_INDEX_BUILD : RECOVERY_WORKER_PARALLEL_INDEX_BUILD;
 	memcpy(&msg->oids, &oids, sizeof(ORelOids));
 	msg->ix_num = ix_num;
-	msg->ix_oid = ix_oid;
-	msg->ix_relnode = ix_relnode;
+//	msg->ix_oid = ix_oid;
+//	msg->ix_relnode = ix_relnode;
 	msg->nindices = nindices;
+	msg->recovery_oxid = recovery_oxid;
+	msg->o_table_version = o_table_version;
 	Assert(o_tables_get(msg->oids) != NULL);
 
 	if (send_to_leader)
@@ -2117,9 +2120,20 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 					recovery_oidxshared->recoveryidxbuild = true;
 					SpinLockRelease(&recovery_oidxshared->mutex);
 
+					Assert(new_o_table->nindices == nindices);
 					/* Send recovery message to become a leader */
-					recovery_send_oids(oids, ix_num, new_o_table->indices[ix_num].oids.datoid,
-									   new_o_table->indices[ix_num].oids.relnode, nindices, true);
+					recovery_send_oids(oids, ix_num, new_o_table->version, nindices, true);
+
+					while (recovery_oidxshared->recoveryidxbuild)
+						ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+
+					ConditionVariableCancelSleep();
+
+//					{
+//						volatile bool a = 1;
+//						while(a)
+//							pg_usleep(100000L);
+//					}
 				}
 				else
 					build_secondary_index(new_o_table, &tmp_descr, ix_num, false);
