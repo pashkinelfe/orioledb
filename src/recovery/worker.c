@@ -391,22 +391,22 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				recovery_oidxshared->oids = msg->oids;
 				SpinLockRelease(&recovery_oidxshared->mutex);
 
-
 				build_secondary_index(o_table, o_descr, msg->ix_num, true);
 				/*
 				 * Wakeup other recovery workers that may wait to do their modify operations on
 				 * this relation
 				 */
-				ORelOidsSetInvalid(recovery_oidxshared->oids);
-				recovery_oidxshared->ix_num = 0;
-				o_free_tmp_table_descr(o_descr);
-				pfree(o_table);
 
 				SpinLockAcquire(&recovery_oidxshared->mutex);
 				recovery_oidxshared->recoveryidxbuild_modify = false;
 				recovery_oidxshared->recoveryidxbuild = false;
+				recovery_oidxshared->ix_num = 0;
+				ORelOidsSetInvalid(recovery_oidxshared->oids);
 				SpinLockRelease(&recovery_oidxshared->mutex);
+
 				ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
+				o_free_tmp_table_descr(o_descr);
+				pfree(o_table);
 				pfree(o_descr);
 
 				data_pos += sizeof(RecoveryOidsMsgIdxBuild);
