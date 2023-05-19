@@ -2123,7 +2123,7 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 
 					Assert(new_o_table->nindices == nindices);
 					/* Send recovery message to become a leader */
-					recovery_oidxshared->magic = 456;
+//					recovery_oidxshared->magic = 456;
 					recovery_send_oids(oids, ix_num, new_o_table->version, nindices, true);
 
 //					while (recovery_oidxshared->recoveryidxbuild)
