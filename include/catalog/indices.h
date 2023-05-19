@@ -113,6 +113,7 @@ typedef struct oIdxShared
 	ParallelOScanDescData poscan;
 	OIndexNumber   ix_num;
 	BgWorkerHandle *worker_handle;
+	int 		   magic;
 	Size 		   o_table_size;
 	char 		   o_table_serialized[];
 } oIdxShared;

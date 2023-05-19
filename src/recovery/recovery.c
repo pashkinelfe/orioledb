@@ -370,6 +370,7 @@ recovery_shmem_init(Pointer ptr, bool found)
 		pg_atomic_init_u64(recovery_main_retain_ptr, InvalidXLogRecPtr);
 		pg_atomic_init_u64(recovery_finished_list_ptr, InvalidXLogRecPtr);
 
+		recovery_oidxshared->magic = 123;
 		ConditionVariableInit(&recovery_oidxshared->recoverycv);
 		recovery_oidxshared->recoveryidxbuild = false;
 		recovery_oidxshared->recoveryidxbuild_modify = false;
@@ -2122,6 +2123,7 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 
 					Assert(new_o_table->nindices == nindices);
 					/* Send recovery message to become a leader */
+					recovery_oidxshared->magic = 456;
 					recovery_send_oids(oids, ix_num, new_o_table->version, nindices, true);
 
 //					while (recovery_oidxshared->recoveryidxbuild)
