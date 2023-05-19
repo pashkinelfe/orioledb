@@ -2537,6 +2537,15 @@ worker_send_modify(int worker_id, BTreeDescr *desc, uint16 recType,
 	ORelOids	oids = desc->oids;
 	OIndexType	type = desc->type;
 
+	if (ORelOidsIsEqual(oids, recovery_oidxshared->oids))
+	{
+		while(recovery_oidxshared->recoveryidxbuild_modify)
+			ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+
+		Assert(!ORelOidsIsValid(recovery_oidxshared->oids));
+		ConditionVariableCancelSleep();
+	}
+
 	if (wal && !IS_SYS_TREE_OIDS(oids) && type == oIndexPrimary)
 	{
 		OIndexDescr *id = (OIndexDescr *) desc->arg;
