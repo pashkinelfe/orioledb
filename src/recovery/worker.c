@@ -370,7 +370,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				OTable      				*o_table;
 				OTableDescr 				*o_descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
 
-				Assert(data_pos == 0);
+//				Assert(data_pos == 0);
 				Assert(ORelOidsIsValid(msg->oids));
 				Assert(id == index_build_leader);
 
@@ -382,8 +382,14 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				Assert(o_table->nindices == msg->nindices);
 				Assert(recovery_oidxshared->ix_num == 0);
 				Assert(!ORelOidsIsValid(recovery_oidxshared->oids));
+
+				/* Prevent rel modify during index build */
+				SpinLockAcquire(&recovery_oidxshared->mutex);
+				recovery_oidxshared->recoveryidxbuild_modify = true;
+				recovery_oidxshared->recoveryidxbuild = true;
 				recovery_oidxshared->ix_num = msg->ix_num;
 				recovery_oidxshared->oids = msg->oids;
+				SpinLockRelease(&recovery_oidxshared->mutex);
 
 
 				build_secondary_index(o_table, o_descr, msg->ix_num, true);

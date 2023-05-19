@@ -2114,11 +2114,11 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 
 //					ConditionVariableCancelSleep();
 
-					/* Prevent rel modify during index build */
-					SpinLockAcquire(&recovery_oidxshared->mutex);
-					recovery_oidxshared->recoveryidxbuild_modify = true;
-					recovery_oidxshared->recoveryidxbuild = true;
-					SpinLockRelease(&recovery_oidxshared->mutex);
+//					/* Prevent rel modify during index build */
+//					SpinLockAcquire(&recovery_oidxshared->mutex);
+//					recovery_oidxshared->recoveryidxbuild_modify = true;
+//					recovery_oidxshared->recoveryidxbuild = true;
+//					SpinLockRelease(&recovery_oidxshared->mutex);
 
 					Assert(new_o_table->nindices == nindices);
 					/* Send recovery message to become a leader */
