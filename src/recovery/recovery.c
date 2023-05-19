@@ -2009,7 +2009,7 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version, i
 	if (send_to_leader)
 	{
 		worker_send_msg(index_build_leader, (Pointer) msg, sizeof(RecoveryOidsMsgIdxBuild));
-		worker_queue_flush(index_build_leader);
+//		worker_queue_flush(index_build_leader);
 	}
 	else
 	{
@@ -2109,10 +2109,10 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 				if (! *recovery_single_process)
 				{
 					/* If other index build is in progress, wait until it finishes */
-					while (recovery_oidxshared->recoveryidxbuild)
-						ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+//					while (recovery_oidxshared->recoveryidxbuild)
+//						ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
 
-					ConditionVariableCancelSleep();
+//					ConditionVariableCancelSleep();
 
 					/* Prevent rel modify during index build */
 					SpinLockAcquire(&recovery_oidxshared->mutex);
@@ -2124,10 +2124,10 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 					/* Send recovery message to become a leader */
 					recovery_send_oids(oids, ix_num, new_o_table->version, nindices, true);
 
-					while (recovery_oidxshared->recoveryidxbuild)
-						ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+//					while (recovery_oidxshared->recoveryidxbuild)
+//						ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
 
-					ConditionVariableCancelSleep();
+//					ConditionVariableCancelSleep();
 
 //					{
 //						volatile bool a = 1;

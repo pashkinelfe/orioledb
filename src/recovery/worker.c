@@ -385,6 +385,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				recovery_oidxshared->ix_num = msg->ix_num;
 				recovery_oidxshared->oids = msg->oids;
 
+
 				build_secondary_index(o_table, o_descr, msg->ix_num, true);
 				/*
 				 * Wakeup other recovery workers that may wait to do their modify operations on
@@ -402,7 +403,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
 				pfree(o_descr);
 
-			data_pos += data_size;
+				data_pos += sizeof(RecoveryOidsMsgIdxBuild);
 			}
 			else if (recovery_header->type & RECOVERY_WORKER_PARALLEL_INDEX_BUILD)
 			{
