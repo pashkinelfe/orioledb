@@ -2516,6 +2516,7 @@ worker_send_msg(int worker_id, Pointer msg, uint64 msg_size)
 
 	Assert(workers_pool);
 	Assert(state);
+	Assert(state->handle);
 	if ((RECOVERY_QUEUE_BUF_SIZE - state->queue_buf_len) < msg_size)
 		worker_queue_flush(worker_id);
 
