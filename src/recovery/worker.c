@@ -700,7 +700,11 @@ apply_tbl_insert(OTableDescr *descr, OTuple tuple,
 
 		cur_tuple = primary ? tuple : stuple;
 
-		o_btree_load_shmem(&id->desc);
+		if(!o_btree_load_shmem_internal(&id->desc, false))
+		{
+			result = false;
+			break;
+		}
 
 		if (primary)
 		{

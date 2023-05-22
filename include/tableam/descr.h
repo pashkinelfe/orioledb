@@ -238,6 +238,7 @@ is_explain_analyze(PlanState *ps)
 }
 
 extern void o_btree_load_shmem(BTreeDescr *desc);
+extern bool o_btree_load_shmem_internal(BTreeDescr *desc, bool checkpoint);
 extern bool o_btree_load_shmem_checkpoint(BTreeDescr *desc);
 extern bool o_btree_try_use_shmem(BTreeDescr *desc);
 

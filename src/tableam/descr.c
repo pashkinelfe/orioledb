@@ -151,7 +151,7 @@ read_evicted_data(ORelOids oids, uint32 chkp_num)
  * To avoid concurrency problems with eviction/cleanup table this call must be
  * under AccessShareLock (See o_tables.h/o_tables_rel_lock()).
  */
-static bool
+bool
 o_btree_load_shmem_internal(BTreeDescr *desc, bool checkpoint)
 {
 	SharedRootInfoKey key;
