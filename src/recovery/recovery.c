@@ -576,7 +576,7 @@ o_recovery_start_hook(void)
 			state->queue = shm_mq_attach(GET_WORKER_QUEUE(i), NULL, workers_pool[i].handle);
 			state->queue_buf_len = 0;
 		}
-		for (i = 0; i <= recovery_last_worker; i++)
+		for (i = recovery_first_worker; i <= finish; i++)
 		{
 			if (shm_mq_wait_for_attach(workers_pool[i].queue) != SHM_MQ_SUCCESS)
 				elog(ERROR, "unable to attach recovery workers to shm queue");
