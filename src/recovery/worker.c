@@ -348,14 +348,14 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 					tuple.data = data + data_pos;
 #if PG_VERSION_NUM >= 140000
 					/* If index is now being built for a relation, wait until it finished before modifying it */
-					if (ORelOidsIsEqual(oids, recovery_oidxshared->oids))
-					{
+//					if (ORelOidsIsEqual(oids, recovery_oidxshared->oids))
+//					{
 					//debug_oids2 = recovery_oidxshared->oids;
-					while(recovery_oidxshared->recoveryidxbuild_modify)
-							ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
-						Assert(!ORelOidsIsValid(recovery_oidxshared->oids));
-						ConditionVariableCancelSleep();
-					}
+//					while(recovery_oidxshared->recoveryidxbuild_modify)
+//							ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
+//						Assert(!ORelOidsIsValid(recovery_oidxshared->oids));
+//						ConditionVariableCancelSleep();
+//					}
 #endif
 					apply_modify_record(descr, indexDescr,
 										(recovery_header->type & RECOVERY_MODIFY),
@@ -366,20 +366,29 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 #if PG_VERSION_NUM >= 140000
 			else if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD )
 			{
-				RecoveryOidsMsgIdxBuild     *msg = (RecoveryOidsMsgIdxBuild *) (data + data_pos);
+				RecoveryOidsMsgIdxBuild     msg;
 				OTable      				*o_table;
+//											*o_table2;
 				OTableDescr 				*o_descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
 
+				memcpy(&msg, data + data_pos, sizeof(RecoveryOidsMsgIdxBuild));
+
 //				Assert(data_pos == 0);
-				Assert(ORelOidsIsValid(msg->oids));
+				Assert(ORelOidsIsValid(msg.oids));
 				Assert(id == index_build_leader);
 
-				recovery_switch_to_oxid(msg->recovery_oxid, id);
+				recovery_switch_to_oxid(msg.recovery_oxid, id);
 //				recovery_oxid = msg->recovery_oxid;
-				o_table = o_tables_get_by_oids_and_version(msg->oids, &msg->o_table_version);
+				o_table = o_tables_get_by_oids_and_version(msg.oids, &msg.o_table_version);
+				{
+					volatile int a=1;
+					while(a)
+						pg_usleep(100000L);
+				}
+//				o_table2 = o_tables_get(msg->oids);
 				o_fill_tmp_table_descr(o_descr, o_table);
 				Assert(o_table);
-				Assert(o_table->nindices == msg->nindices);
+				Assert(o_table->nindices == msg.nindices);
 				Assert(recovery_oidxshared->ix_num == 0);
 				Assert(!ORelOidsIsValid(recovery_oidxshared->oids));
 
@@ -387,12 +396,12 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				SpinLockAcquire(&recovery_oidxshared->mutex);
 				recovery_oidxshared->recoveryidxbuild_modify = true;
 				recovery_oidxshared->recoveryidxbuild = true;
-				recovery_oidxshared->ix_num = msg->ix_num;
-				recovery_oidxshared->oids = msg->oids;
+				recovery_oidxshared->ix_num = msg.ix_num;
+				recovery_oidxshared->oids = msg.oids;
 				recovery_oidxshared->magic = 789;
 				SpinLockRelease(&recovery_oidxshared->mutex);
 
-				build_secondary_index(o_table, o_descr, msg->ix_num, true);
+				build_secondary_index(o_table, o_descr, msg.ix_num, true);
 				/*
 				 * Wakeup other recovery workers that may wait to do their modify operations on
 				 * this relation
@@ -402,6 +411,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				recovery_oidxshared->recoveryidxbuild_modify = false;
 				recovery_oidxshared->recoveryidxbuild = false;
 				recovery_oidxshared->ix_num = 0;
+				recovery_oidxshared->completed_position = msg.current_position;
 				ORelOidsSetInvalid(recovery_oidxshared->oids);
 				SpinLockRelease(&recovery_oidxshared->mutex);
 

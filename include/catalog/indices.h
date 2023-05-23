@@ -114,6 +114,9 @@ typedef struct oIdxShared
 	OIndexNumber   ix_num;
 	BgWorkerHandle *worker_handle;
 	int 		   magic;
+	/* Index build queue positions */
+	uint32		   new_position;
+	uint32		   completed_position;
 	Size 		   o_table_size;
 	char 		   o_table_serialized[];
 } oIdxShared;
