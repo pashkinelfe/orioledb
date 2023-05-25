@@ -2152,6 +2152,7 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 					/* Send recovery message to become a leader */
 					recovery_oidxshared->magic = 456;
 					recovery_send_oids(oids, ix_num, new_o_table->version, nindices, true);
+					delay_queued_rels(oids);
 				}
 				else
 					build_secondary_index(new_o_table, &tmp_descr, ix_num, false);
