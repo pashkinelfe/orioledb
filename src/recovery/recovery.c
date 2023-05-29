@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
- *
- * recovery.c
- *		General routines for orioledb recovery.
- *
- * Copyright (c) 2021-2022, Oriole DB Inc.
- *
- * IDENTIFICATION
- *	  contrib/orioledb/src/recovery/recovery.c
- *
- *-------------------------------------------------------------------------
- */
+*
+* recovery.c
+*		General routines for orioledb recovery.
+*
+* Copyright (c) 2021-2022, Oriole DB Inc.
+*
+* IDENTIFICATION
+*	  contrib/orioledb/src/recovery/recovery.c
+*
+*-------------------------------------------------------------------------
+*/
 
 #include "postgres.h"
 
@@ -1233,8 +1233,8 @@ recovery_finish_current_oxid(CommitSeqNo csn, XLogRecPtr ptr,
 	oxid_needs_wal_flush = false;
 	reset_cur_undo_locations();
 	recovery_oxid = InvalidOXid;
-	recovery_oidxshared->recovery_oxid = recovery_oxid;
-	recovery_oidxshared->magic |= (1 << 4);
+//	recovery_oidxshared->recovery_oxid = recovery_oxid;
+//	recovery_oidxshared->magic |= (1 << 4);
 	if (!UndoLocationIsValid(cur_state->retain_loc) &&
 		UndoLocationIsValid(curRetainUndoLocation))
 	{
