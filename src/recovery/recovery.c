@@ -378,7 +378,7 @@ recovery_shmem_init(Pointer ptr, bool found)
 		pg_atomic_init_u64(recovery_main_retain_ptr, InvalidXLogRecPtr);
 		pg_atomic_init_u64(recovery_finished_list_ptr, InvalidXLogRecPtr);
 
-		recovery_oidxshared->magic = 123;
+		recovery_oidxshared->magic = 0;
 		ConditionVariableInit(&recovery_oidxshared->recoverycv);
 		recovery_oidxshared->recoveryidxbuild = false;
 		recovery_oidxshared->recoveryidxbuild_modify = false;
@@ -501,6 +501,7 @@ apply_xids_branches(void)
 
 		oxid_needs_wal_flush = cur_state->needs_wal_flush;
 		recovery_oxid = cur_state->oxid;
+		recovery_oidxshared->magic |= (1 << 11);
 		recovery_oidxshared->recovery_oxid = recovery_oxid;
 
 		dlist_foreach(iter, &cur_state->checkpoint_undo_stacks)
@@ -517,6 +518,7 @@ apply_xids_branches(void)
 	oxid_needs_wal_flush = false;
 	recovery_oxid = InvalidOXid;
 	recovery_oidxshared->recovery_oxid = recovery_oxid;
+	recovery_oidxshared->magic |= (1 << 12);
 	reset_cur_undo_locations();
 	cur_state = NULL;
 }
@@ -936,6 +938,7 @@ walk_checkpoint_stacks(CommitSeqNo csn,
 	oxid_needs_wal_flush = cur_state->needs_wal_flush;
 	recovery_oxid = cur_state->oxid;
 	recovery_oidxshared->recovery_oxid = recovery_oxid;
+	recovery_oidxshared->magic |= (1 << 13);
 
 	dlist_foreach_modify(miter, &cur_state->checkpoint_undo_stacks)
 	{
@@ -992,6 +995,7 @@ recovery_finish(int worker_id)
 			oxid_needs_wal_flush = cur_state->needs_wal_flush;
 			recovery_oxid = cur_state->oxid;
 			recovery_oidxshared->recovery_oxid = recovery_oxid;
+			recovery_oidxshared->magic |= (1 << 14);
 			set_cur_undo_locations(cur_state->undo_stack);
 			if (flush_undo_pos)
 				flush_current_undo_stack();
@@ -1036,6 +1040,7 @@ recovery_finish(int worker_id)
 	oxid_needs_wal_flush = false;
 	recovery_oxid = InvalidOXid;
 	recovery_oidxshared->recovery_oxid = recovery_oxid;
+	recovery_oidxshared->magic |= (1 << 7);
 	reset_cur_undo_locations();
 	MemoryContextDelete(CurTransactionContext);
 	MemoryContextDelete(TopTransactionContext);
@@ -1071,6 +1076,7 @@ recovery_switch_to_oxid(OXid oxid, int worker_id)
 
 		recovery_oxid = oxid;
 		recovery_oidxshared->recovery_oxid = recovery_oxid;
+		recovery_oidxshared->magic |= (1 << 6);
 		cur_state = (RecoveryXidState *) hash_search(recovery_xid_state_hash,
 													 &oxid,
 													 HASH_ENTER,
@@ -1228,6 +1234,7 @@ recovery_finish_current_oxid(CommitSeqNo csn, XLogRecPtr ptr,
 	reset_cur_undo_locations();
 	recovery_oxid = InvalidOXid;
 	recovery_oidxshared->recovery_oxid = recovery_oxid;
+	recovery_oidxshared->magic |= (1 << 4);
 	if (!UndoLocationIsValid(cur_state->retain_loc) &&
 		UndoLocationIsValid(curRetainUndoLocation))
 	{
@@ -2038,6 +2045,7 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version, i
 #endif
 	msg->recovery_oxid = recovery_oxid;
 	recovery_oidxshared->recovery_oxid = recovery_oxid;
+	recovery_oidxshared->magic |= (1 << 5);
 	msg->o_table_version = o_table_version;
 	Assert(o_tables_get(msg->oids) != NULL);
 
@@ -2157,7 +2165,7 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 				{
 					Assert(new_o_table->nindices == nindices);
 					/* Send recovery message to become a leader */
-					recovery_oidxshared->magic = 456;
+					recovery_oidxshared->magic |= 1;
 					recovery_send_oids(oids, ix_num, new_o_table->version, nindices, true);
 //					delay_queued_rels(oids);
 				}

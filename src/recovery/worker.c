@@ -398,7 +398,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				recovery_oidxshared->recoveryidxbuild = true;
 				recovery_oidxshared->ix_num = msg.ix_num;
 				recovery_oidxshared->oids = msg.oids;
-				recovery_oidxshared->magic = 789;
+				recovery_oidxshared->magic |= (1 << 3);
 				SpinLockRelease(&recovery_oidxshared->mutex);
 
 				build_secondary_index(o_table, o_descr, msg.ix_num, true);
