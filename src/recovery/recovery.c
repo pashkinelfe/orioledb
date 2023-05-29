@@ -609,6 +609,7 @@ o_recovery_start_hook(void)
 
 	recovery_init(-1);
 
+	/* Maybe delay? */
 	if (checkpoint_state->lastCheckpointNumber > 0)
 		apply_xids_branches();
 }
@@ -1075,8 +1076,8 @@ recovery_switch_to_oxid(OXid oxid, int worker_id)
 		}
 
 		recovery_oxid = oxid;
-		recovery_oidxshared->recovery_oxid = recovery_oxid;
-		recovery_oidxshared->magic |= (1 << 6);
+//		recovery_oidxshared->recovery_oxid = recovery_oxid;
+//		recovery_oidxshared->magic |= (1 << 6);
 		cur_state = (RecoveryXidState *) hash_search(recovery_xid_state_hash,
 													 &oxid,
 													 HASH_ENTER,
