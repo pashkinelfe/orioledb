@@ -379,12 +379,13 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 
 //				recovery_switch_to_oxid(recovery_oidxshared->recovery_oxid, id);
 				recovery_oxid = recovery_oidxshared->recovery_oxid;
-				o_table = o_tables_get_by_oids_and_version(msg.oids, &msg.o_table_version);
 				{
 					volatile int a=1;
 					while(a)
 						pg_usleep(100000L);
 				}
+
+				o_table = o_tables_get_by_oids_and_version(msg.oids, &msg.o_table_version);
 //				o_table2 = o_tables_get(msg->oids);
 				o_fill_tmp_table_descr(o_descr, o_table);
 				Assert(o_table);
