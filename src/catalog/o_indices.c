@@ -659,7 +659,7 @@ attrnumber_cmp(const void *p1, const void *p2)
 }
 
 void
-o_index_fill_descr(OIndexDescr *descr, OIndex *oIndex, int version)
+o_index_fill_descr(OIndexDescr *descr, OIndex *oIndex, uint32 version)
 {
 	int			i;
 	int			maxTableAttnum = 0;
