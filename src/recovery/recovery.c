@@ -385,7 +385,6 @@ recovery_shmem_init(Pointer ptr, bool found)
 		recovery_oidxshared->recoveryidxbuild_modify = false;
 		recovery_oidxshared->new_position = 0;
 		recovery_oidxshared->completed_position = 0;
-		recovery_oidxshared->remove_hash = false;
 	}
 }
 
@@ -2569,18 +2568,19 @@ delay_if_queued_indexes(void)
 
 	while (idxbuild_oids_hash)
 	{
-		/* Remove hash entry for completed index */
-		if (recovery_oidxshared->remove_hash)
+		/* Remove hash entries for completed index */
+		HASH_SEQ_STATUS hash_seq;
+		RecoveryIdxBuildQueueState *cur;
+
+		hash_seq_init(&hash_seq, idxbuild_oids_hash);
+		while ((cur = (RecoveryIdxBuildQueueState *) hash_seq_search(&hash_seq)) != NULL)
 		{
-			hash_elem = (RecoveryIdxBuildQueueState *) hash_search(idxbuild_oids_hash,
-                                                       &recovery_oidxshared->oids,
-                                                       HASH_REMOVE,
-                                                       &found);
-			ORelOidsSetInvalid(recovery_oidxshared->oids);
-			recovery_oidxshared->remove_hash = false;
+			if (cur->position <= recovery_oidxshared->completed_position)
+				hash_search(idxbuild_oids_hash, &cur->oids, HASH_REMOVE, &found);
 		}
 
 		nentries = hash_get_num_entries(idxbuild_oids_hash);
+
 		if(nentries == 0)
 			break;
 

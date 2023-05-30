@@ -413,7 +413,6 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				recovery_oidxshared->recoveryidxbuild = false;
 				recovery_oidxshared->ix_num = 0;
 				recovery_oidxshared->completed_position = msg.current_position;
-				recovery_oidxshared->remove_hash = true;
 				ORelOidsSetInvalid(recovery_oidxshared->oids);
 				SpinLockRelease(&recovery_oidxshared->mutex);
 
