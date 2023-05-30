@@ -370,8 +370,6 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				OTable      				*o_table;
 //											*o_table2;
 				OTableDescr 				*o_descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
-//				RecoveryIdxBuildQueueState *hash_elem;
-				bool found;
 
 				memcpy(&msg, data + data_pos, sizeof(RecoveryOidsMsgIdxBuild));
 
