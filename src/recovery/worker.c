@@ -305,7 +305,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				{
 					memcpy(&oxid, data + data_pos, sizeof(OXid));
 					data_pos += sizeof(OXid);
-					recovery_switch_to_oxid(oxid, id);
+					recovery_switch_to_oxid(oxid, id, false);
 				}
 
 				if (recovery_header->type & RECOVERY_MODIFY_OIDS)
@@ -370,6 +370,8 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				OTable      				*o_table;
 //											*o_table2;
 				OTableDescr 				*o_descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
+//				RecoveryIdxBuildQueueState *hash_elem;
+				bool found;
 
 				memcpy(&msg, data + data_pos, sizeof(RecoveryOidsMsgIdxBuild));
 
@@ -377,14 +379,17 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				Assert(ORelOidsIsValid(msg.oids));
 				Assert(id == index_build_leader);
 
-				recovery_switch_to_oxid(msg.recovery_oxid, id);
-//				recovery_oxid = msg->recovery_oxid;
+//				recovery_switch_to_oxid(recovery_oidxshared->recovery_oxid, id, true);
+				recovery_oxid = recovery_oidxshared->recovery_oxid;
+				recovery_oidxshared->magic = 0;
+
 				o_table = o_tables_get_by_oids_and_version(msg.oids, &msg.o_table_version);
-				{
-					volatile int a=1;
-					while(a)
-						pg_usleep(100000L);
-				}
+				Assert(o_table->version == msg.o_table_version);
+//				{
+//					volatile int a=1;
+//					while(a)
+//						pg_usleep(100000L);
+//				}
 //				o_table2 = o_tables_get(msg->oids);
 				o_fill_tmp_table_descr(o_descr, o_table);
 				Assert(o_table);
@@ -398,23 +403,24 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				recovery_oidxshared->recoveryidxbuild = true;
 				recovery_oidxshared->ix_num = msg.ix_num;
 				recovery_oidxshared->oids = msg.oids;
-				recovery_oidxshared->magic = 789;
+				recovery_oidxshared->magic |= (1<<3);
 				SpinLockRelease(&recovery_oidxshared->mutex);
 
 				build_secondary_index(o_table, o_descr, msg.ix_num, true);
-				/*
-				 * Wakeup other recovery workers that may wait to do their modify operations on
-				 * this relation
-				 */
 
 				SpinLockAcquire(&recovery_oidxshared->mutex);
 				recovery_oidxshared->recoveryidxbuild_modify = false;
 				recovery_oidxshared->recoveryidxbuild = false;
 				recovery_oidxshared->ix_num = 0;
 				recovery_oidxshared->completed_position = msg.current_position;
+				recovery_oidxshared->remove_hash = true;
 				ORelOidsSetInvalid(recovery_oidxshared->oids);
 				SpinLockRelease(&recovery_oidxshared->mutex);
 
+				/*
+				 * Wakeup other recovery workers that may wait to do their modify operations on
+				 * this relation
+				 */
 				ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
 				o_free_tmp_table_descr(o_descr);
 				pfree(o_table);
@@ -458,7 +464,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 			else if (recovery_header->type & RECOVERY_COMMIT)
 			{
 				oxid_csn_record = (RecoveryMsgOXidPtr *) (data + data_pos);
-				recovery_switch_to_oxid(oxid_csn_record->oxid, id);
+				recovery_switch_to_oxid(oxid_csn_record->oxid, id, false);
 				recovery_finish_current_oxid(COMMITSEQNO_MAX_NORMAL - 1,
 											 oxid_csn_record->ptr,
 											 id,
@@ -469,7 +475,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 			else if (recovery_header->type & RECOVERY_ROLLBACK)
 			{
 				oxid_csn_record = (RecoveryMsgOXidPtr *) (data + data_pos);
-				recovery_switch_to_oxid(oxid_csn_record->oxid, id);
+				recovery_switch_to_oxid(oxid_csn_record->oxid, id, false);
 				recovery_finish_current_oxid(COMMITSEQNO_ABORTED,
 											 oxid_csn_record->ptr,
 											 id,
@@ -508,7 +514,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				RecoveryMsgSavepoint *msg;
 
 				msg = (RecoveryMsgSavepoint *) (data + data_pos);
-				recovery_switch_to_oxid(msg->oxid, id);
+				recovery_switch_to_oxid(msg->oxid, id, false);
 				recovery_savepoint(msg->parentSubId, id);
 				data_pos += sizeof(RecoveryMsgSavepoint);
 			}
@@ -517,7 +523,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				RecoveryMsgRollbackToSavepoint *msg;
 
 				msg = (RecoveryMsgRollbackToSavepoint *) (data + data_pos);
-				recovery_switch_to_oxid(msg->oxid, id);
+				recovery_switch_to_oxid(msg->oxid, id, false);
 				recovery_rollback_to_savepoint(msg->parentSubId, id);
 				update_worker_ptr(id, msg->ptr);
 				data_pos += sizeof(RecoveryMsgRollbackToSavepoint);

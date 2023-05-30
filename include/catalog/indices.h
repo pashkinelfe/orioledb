@@ -117,6 +117,8 @@ typedef struct oIdxShared
 	/* Index build queue positions */
 	uint32		   new_position;
 	uint32		   completed_position;
+	OXid		   recovery_oxid;
+	bool		   remove_hash;
 	Size 		   o_table_size;
 	char 		   o_table_serialized[];
 } oIdxShared;
