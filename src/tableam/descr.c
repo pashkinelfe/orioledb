@@ -511,7 +511,7 @@ fill_table_descr(OTableDescr *descr, OTable *o_table)
 }
 
 void
-o_fill_tmp_table_descr(OTableDescr *descr, OTable *o_table)
+o_fill_tmp_table_descr(OTableDescr *descr, OTable *o_table, bool last_version)
 {
 	MemoryContext old_context;
 	OIndexNumber cur_ix;
@@ -531,7 +531,7 @@ o_fill_tmp_table_descr(OTableDescr *descr, OTable *o_table)
 	{
 		index = make_o_index(o_table, cur_ix);
 		indexDescr = palloc0(sizeof(OIndexDescr));
-		o_index_fill_descr(indexDescr, index, o_table->version);
+		o_index_fill_descr(indexDescr, index, last_version ? &o_table->version : NULL);
 		index_btree_desc_init(&indexDescr->desc, indexDescr->compress,
 							  indexDescr->oids, index->indexType,
 							  index->createOxid, indexDescr);
@@ -541,7 +541,7 @@ o_fill_tmp_table_descr(OTableDescr *descr, OTable *o_table)
 
 	index = make_o_index(o_table, TOASTIndexNumber);
 	indexDescr = palloc0(sizeof(OIndexDescr));
-	o_index_fill_descr(indexDescr, index, o_table->version);
+	o_index_fill_descr(indexDescr, index, last_version ? &o_table->version : NULL);
 	index_btree_desc_init(&indexDescr->desc, indexDescr->compress,
 						  indexDescr->oids, index->indexType,
 						  index->createOxid, indexDescr);

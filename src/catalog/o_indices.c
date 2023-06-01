@@ -659,7 +659,7 @@ attrnumber_cmp(const void *p1, const void *p2)
 }
 
 void
-o_index_fill_descr(OIndexDescr *descr, OIndex *oIndex, uint32 version)
+o_index_fill_descr(OIndexDescr *descr, OIndex *oIndex, uint32 *version)
 {
 	int			i;
 	int			maxTableAttnum = 0;
@@ -678,7 +678,7 @@ o_index_fill_descr(OIndexDescr *descr, OIndex *oIndex, uint32 version)
 													 oIndex->nLeafFields);
 	if (oIndex->indexType == oIndexPrimary)
 	{
-		OTable	   *o_table = o_tables_get_by_oids_and_version(descr->tableOids, &version);
+		OTable	   *o_table = o_tables_get_by_oids_and_version(descr->tableOids, version);
 
 		if (o_table)
 		{
