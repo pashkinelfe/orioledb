@@ -93,7 +93,7 @@ typedef struct
 	OXid 	          recovery_oxid;
 	uint32 	          o_table_version;
 	uint32			  current_position;
-	uint16			  nindices PG_USED_FOR_ASSERTS_ONLY;
+	uint16			  nindices;
 } RecoveryOidsMsgIdxBuild;
 
 typedef struct

@@ -2051,7 +2051,6 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version, i
 
 	if (send_to_leader)
 	{
-		bool found;
 		RecoveryIdxBuildQueueState *state;
 //		delay_queued_rels(oids);
 
@@ -2562,7 +2561,6 @@ worker_send_msg(int worker_id, Pointer msg, uint64 msg_size)
 static void
 delay_if_queued_indexes(void)
 {
-	RecoveryIdxBuildQueueState *hash_elem;
 	long nentries;
 	bool found;
 
