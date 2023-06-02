@@ -279,11 +279,6 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				data_pos;
 	bool		finished = false;
 	OXid		oxid;
-#if PG_VERSION_NUM >= 140000
-	Size 		expected_table_size = 0,
-				actual_table_size = 0;
-	char	   *o_table_serialized = NULL;
-#endif
 
 	while (!finished)
 	{
