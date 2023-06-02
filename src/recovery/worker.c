@@ -342,21 +342,8 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				if (indexDescr != NULL)
 				{
 					Assert(ORelOidsIsValid(oids));
-//					ORelOids    debug_oids1 = recovery_oidxshared->oids;
-//					ORelOids	debug_oids2;
 
 					tuple.data = data + data_pos;
-#if PG_VERSION_NUM >= 140000
-					/* If index is now being built for a relation, wait until it finished before modifying it */
-//					if (ORelOidsIsEqual(oids, recovery_oidxshared->oids))
-//					{
-					//debug_oids2 = recovery_oidxshared->oids;
-//					while(recovery_oidxshared->recoveryidxbuild_modify)
-//							ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
-//						Assert(!ORelOidsIsValid(recovery_oidxshared->oids));
-//						ConditionVariableCancelSleep();
-//					}
-#endif
 					apply_modify_record(descr, indexDescr,
 										(recovery_header->type & RECOVERY_MODIFY),
 										tuple, false);
@@ -364,98 +351,67 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				data_pos += tuple_len;
 			}
 #if PG_VERSION_NUM >= 140000
-			else if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD )
+			else if (recovery_header->type & (RECOVERY_LEADER_PARALLEL_INDEX_BUILD | RECOVERY_WORKER_PARALLEL_INDEX_BUILD))
 			{
 				RecoveryOidsMsgIdxBuild     msg;
 				OTable      				*o_table;
-//											*o_table2;
-				OTableDescr 				*o_descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
 
 				memcpy(&msg, data + data_pos, sizeof(RecoveryOidsMsgIdxBuild));
-
-//				Assert(data_pos == 0);
 				Assert(ORelOidsIsValid(msg.oids));
-				Assert(id == index_build_leader);
-
-//				recovery_switch_to_oxid(recovery_oidxshared->recovery_oxid, id, true);
+	//			recovery_switch_to_oxid(recovery_oidxshared->recovery_oxid, id, true);
 				recovery_oxid = recovery_oidxshared->recovery_oxid;
-				recovery_oidxshared->magic = 0;
-
 				o_table = o_tables_get_by_oids_and_version(msg.oids, &msg.o_table_version);
-				Assert(o_table->version == msg.o_table_version);
-//				{
-//					volatile int a=1;
-//					while(a)
-//						pg_usleep(100000L);
-//				}
-//				o_table2 = o_tables_get(msg->oids);
-				o_fill_tmp_table_descr(o_descr, o_table);
 				Assert(o_table);
+				Assert(o_table->version == msg.o_table_version);
 				Assert(o_table->nindices == msg.nindices);
-				Assert(recovery_oidxshared->ix_num == 0);
-				Assert(!ORelOidsIsValid(recovery_oidxshared->oids));
 
-				/* Prevent rel modify during index build */
-				SpinLockAcquire(&recovery_oidxshared->mutex);
-				recovery_oidxshared->recoveryidxbuild_modify = true;
-				recovery_oidxshared->recoveryidxbuild = true;
-				recovery_oidxshared->ix_num = msg.ix_num;
-				recovery_oidxshared->oids = msg.oids;
-				recovery_oidxshared->magic |= (1<<3);
-				SpinLockRelease(&recovery_oidxshared->mutex);
-
-				build_secondary_index(o_table, o_descr, msg.ix_num, true);
-
-				SpinLockAcquire(&recovery_oidxshared->mutex);
-				recovery_oidxshared->recoveryidxbuild_modify = false;
-				recovery_oidxshared->recoveryidxbuild = false;
-				recovery_oidxshared->ix_num = 0;
-				recovery_oidxshared->completed_position = msg.current_position;
-				ORelOidsSetInvalid(recovery_oidxshared->oids);
-				SpinLockRelease(&recovery_oidxshared->mutex);
-
-				/*
-				 * Wakeup other recovery workers that may wait to do their modify operations on
-				 * this relation
-				 */
-				ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
-				o_free_tmp_table_descr(o_descr);
-				pfree(o_table);
-				pfree(o_descr);
-
-				data_pos += sizeof(RecoveryOidsMsgIdxBuild);
-			}
-			else if (recovery_header->type & RECOVERY_WORKER_PARALLEL_INDEX_BUILD)
-			{
-				RecoveryMsgIdxBuild 	*msg = (RecoveryMsgIdxBuild *) (data + data_pos);
-				Size 					cur_chunk_size = data_size - offsetof(RecoveryMsgIdxBuild, o_table_serialized);
-
-				Assert(data_pos == 0);
-
-				/* First chunk of *PARALLEL_INDEX_BUILD recovery message */
-				if (msg->o_table_size)
+				if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD)
 				{
-					actual_table_size = 0;
-					expected_table_size = msg->o_table_size;
-					o_table_serialized = palloc0(expected_table_size);
+					OTableDescr 				*o_descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
+
+					Assert(id == index_build_leader);
+					recovery_oidxshared->magic = 0;
+					o_fill_tmp_table_descr(o_descr, o_table);
+
+					/* Prevent rel modify during index build */
+					Assert(recovery_oidxshared->ix_num == 0);
+					Assert(!ORelOidsIsValid(recovery_oidxshared->oids));
+
+					SpinLockAcquire(&recovery_oidxshared->mutex);
+					recovery_oidxshared->recoveryidxbuild_modify = true;
+					recovery_oidxshared->recoveryidxbuild = true;
+					recovery_oidxshared->ix_num = msg.ix_num;
+					recovery_oidxshared->oids = msg.oids;
+					recovery_oidxshared->magic |= (1<<3);
+					SpinLockRelease(&recovery_oidxshared->mutex);
+
+					build_secondary_index(o_table, o_descr, msg.ix_num, true);
+
+					SpinLockAcquire(&recovery_oidxshared->mutex);
+					recovery_oidxshared->recoveryidxbuild_modify = false;
+					recovery_oidxshared->recoveryidxbuild = false;
+					recovery_oidxshared->ix_num = 0;
+					recovery_oidxshared->completed_position = msg.current_position;
+					ORelOidsSetInvalid(recovery_oidxshared->oids);
+					SpinLockRelease(&recovery_oidxshared->mutex);
+
+					/*
+					 * Wakeup the other recovery workers that may wait to do their modify operations on
+					 * this relation
+					 */
+					ConditionVariableBroadcast(&recovery_oidxshared->recoverycv);
+					o_free_tmp_table_descr(o_descr);
+					pfree(o_descr);
 				}
-
-				Assert(expected_table_size > 0 && o_table_serialized != NULL);
-				memcpy(o_table_serialized + actual_table_size, msg->o_table_serialized, cur_chunk_size);
-				actual_table_size += cur_chunk_size;
-				Assert(actual_table_size <= expected_table_size);
-
-				if (actual_table_size == expected_table_size)
+				else if (recovery_header->type & RECOVERY_WORKER_PARALLEL_INDEX_BUILD)
 				{
-					Assert(expected_table_size == recovery_oidxshared->o_table_size);
-					Assert(index_build_first_worker <= id && id <= index_build_last_worker);
+					Assert(id >= index_build_first_worker && id <= index_build_last_worker);
 					/* participate as a worker in parallel index build */
-					_o_index_parallel_build_inner(NULL, NULL, o_table_serialized, actual_table_size);
-					pfree(o_table_serialized);
-					actual_table_size = 0;
+					_o_index_parallel_build_inner(NULL, NULL, o_table);
 				}
 
-				data_pos += data_size;
+			data_pos += sizeof(RecoveryOidsMsgIdxBuild);
+			pfree(o_table);
 			}
 #endif
 			else if (recovery_header->type & RECOVERY_COMMIT)

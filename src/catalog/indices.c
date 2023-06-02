@@ -874,7 +874,8 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 
 		if (btshared->nrecoveryworkers != 0)
 		{
-			recovery_send_o_table(o_table_serialized, o_table_size, false);
+			recovery_send_oids(btspool->o_table->oids, buildstate->ix_num,
+							   btspool->o_table->version, btspool->o_table->nindices, false);
 			tuplesort_initialize_shared(sharedsort, btshared->scantuplesortstates, NULL);
 		}
 
@@ -1036,7 +1037,7 @@ _o_index_leader_participate_as_worker(oIdxBuildState *buildstate)
  */
 void _o_index_parallel_build_main(dsm_segment *seg, shm_toc *toc)
 {
-	_o_index_parallel_build_inner(seg, toc, NULL, 0);
+	_o_index_parallel_build_inner(seg, toc, NULL);
 }
 
 /*
@@ -1046,8 +1047,7 @@ void _o_index_parallel_build_main(dsm_segment *seg, shm_toc *toc)
  */
 void
 _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
-							char *recovery_o_table_serialized,
-							Size recovery_o_table_size)
+							OTable *recovery_o_table)
 {
 	oIdxSpool    *btspool;
 	oIdxShared   *btshared;
@@ -1071,7 +1071,7 @@ _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 		 * btshared is allocated to contain serialized o_table
 		 */
 
-		Assert(recovery_o_table_size == 0 && recovery_o_table_serialized == NULL);
+		Assert(recovery_o_table == NULL);
 		/* Look up nbtree shared state */
 		btshared = shm_toc_lookup(toc, PARALLEL_KEY_BTREE_SHARED, false);
 		btspool->o_table = deserialize_o_table((Pointer)(&btshared->o_table_serialized), btshared->o_table_size);
@@ -1088,10 +1088,9 @@ _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 		 */
 
 		Assert(seg == NULL && toc == NULL);
+		Assert(recovery_o_table);
 		btshared = recovery_oidxshared;
-		/* Size transferred through recovery message is the same one as stored in shared state */
-		//Assert(recovery_o_table_size == btshared->o_table_size);
-		btspool->o_table = deserialize_o_table((Pointer) recovery_o_table_serialized, recovery_o_table_size);
+		btspool->o_table = recovery_o_table;
 		sharedsort = recovery_sharedsort;
 	}
 

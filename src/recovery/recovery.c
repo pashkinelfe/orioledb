@@ -2029,7 +2029,7 @@ clean_workers_oids(void)
 }
 
 #if PG_VERSION_NUM >= 140000
-static void
+void
 recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version, int nindices,
 		bool send_to_leader)
 {
@@ -2052,9 +2052,8 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version, i
 	if (send_to_leader)
 	{
 		RecoveryIdxBuildQueueState *state;
-//		delay_queued_rels(oids);
 
-		/* Remember in a hash table oids of index build added to a queue */
+		/* Remember oids of index build added to a queue in a hash table */
 		state = (RecoveryIdxBuildQueueState *) hash_search(idxbuild_oids_hash,
                                                       &oids,
                                                       HASH_ENTER,
