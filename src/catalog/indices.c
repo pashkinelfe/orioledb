@@ -773,7 +773,7 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 		btshared->nrecoveryworkers = 0;
 #endif
 		scantuplesortstates = leaderparticipates ? btshared->nrecoveryworkers + 1 : btshared->nrecoveryworkers;
-		btshared->o_table_size = o_table_size;
+		btshared->o_table_size = 0;
 		sharedsort = recovery_sharedsort;
 	}
 
