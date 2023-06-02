@@ -2134,7 +2134,7 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 		{
 			OTableDescr tmp_descr;
 
-			o_fill_tmp_table_descr(&tmp_descr, new_o_table, false);
+			o_fill_tmp_table_descr(&tmp_descr, new_o_table);
 			if (new_o_table->indices[ix_num].type == oIndexPrimary)
 			{
 				if (tbl_data_exists(&old_o_table->oids))
@@ -2185,7 +2185,7 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 			{
 				OTableDescr tmp_descr;
 
-				o_fill_tmp_table_descr(&tmp_descr, new_o_table, false);
+				o_fill_tmp_table_descr(&tmp_descr, new_o_table);
 				if (tbl_data_exists(&old_o_table->indices[ix_num].oids))
 				{
 					old_descr = o_fetch_table_descr(old_o_table->oids);

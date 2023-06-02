@@ -389,7 +389,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 //						pg_usleep(100000L);
 //				}
 //				o_table2 = o_tables_get(msg->oids);
-				o_fill_tmp_table_descr(o_descr, o_table, true);
+				o_fill_tmp_table_descr(o_descr, o_table);
 				Assert(o_table);
 				Assert(o_table->nindices == msg.nindices);
 				Assert(recovery_oidxshared->ix_num == 0);

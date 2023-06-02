@@ -1097,7 +1097,7 @@ _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 
 	btspool->isunique = btshared->isunique;
 	btspool->descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
-	o_fill_tmp_table_descr(btspool->descr, btspool->o_table, false);
+	o_fill_tmp_table_descr(btspool->descr, btspool->o_table);
 
 	/* Prepare to track buffer usage during parallel execution */
 	InstrStartParallelQuery();
