@@ -2047,7 +2047,7 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version, i
 #endif
 	msg->recovery_oxid = recovery_oxid;
 	msg->o_table_version = o_table_version;
-	Assert(o_tables_get(msg->oids) != NULL);
+	Assert(o_tables_get_by_oids_and_version(oids, &o_table_version) != NULL);
 
 	if (send_to_leader)
 	{
