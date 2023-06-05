@@ -77,12 +77,8 @@ typedef struct oIdxShared
 	ConditionVariable workersdonecv;
 
 	ConditionVariable recoverycv;
-	/* Don't start next index build in recovery while current is in progress */
+	/* Recovery index build is in progress */
 	bool recoveryidxbuild;
-	/* Exclude relation with index being built in recovery from applying recovery modify messages
-	 * concurrently */
-	bool recoveryidxbuild_modify;
-	ORelOids	oids;
 
 	/*
 	 * mutex protects all fields before heapdesc.
@@ -113,7 +109,6 @@ typedef struct oIdxShared
 	ParallelOScanDescData poscan;
 	OIndexNumber   ix_num;
 	BgWorkerHandle *worker_handle;
-	int 		   magic;
 	/* Index build queue positions */
 	uint32		   new_position;
 	uint32		   completed_position;
