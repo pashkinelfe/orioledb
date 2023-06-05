@@ -300,7 +300,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				{
 					memcpy(&oxid, data + data_pos, sizeof(OXid));
 					data_pos += sizeof(OXid);
-					recovery_switch_to_oxid(oxid, id, false);
+					recovery_switch_to_oxid(oxid, id);
 				}
 
 				if (recovery_header->type & RECOVERY_MODIFY_OIDS)
@@ -396,7 +396,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 			else if (recovery_header->type & RECOVERY_COMMIT)
 			{
 				oxid_csn_record = (RecoveryMsgOXidPtr *) (data + data_pos);
-				recovery_switch_to_oxid(oxid_csn_record->oxid, id, false);
+				recovery_switch_to_oxid(oxid_csn_record->oxid, id);
 				recovery_finish_current_oxid(COMMITSEQNO_MAX_NORMAL - 1,
 											 oxid_csn_record->ptr,
 											 id,
@@ -407,7 +407,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 			else if (recovery_header->type & RECOVERY_ROLLBACK)
 			{
 				oxid_csn_record = (RecoveryMsgOXidPtr *) (data + data_pos);
-				recovery_switch_to_oxid(oxid_csn_record->oxid, id, false);
+				recovery_switch_to_oxid(oxid_csn_record->oxid, id);
 				recovery_finish_current_oxid(COMMITSEQNO_ABORTED,
 											 oxid_csn_record->ptr,
 											 id,
@@ -440,7 +440,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				RecoveryMsgSavepoint *msg;
 
 				msg = (RecoveryMsgSavepoint *) (data + data_pos);
-				recovery_switch_to_oxid(msg->oxid, id, false);
+				recovery_switch_to_oxid(msg->oxid, id);
 				recovery_savepoint(msg->parentSubId, id);
 				data_pos += sizeof(RecoveryMsgSavepoint);
 			}
@@ -449,7 +449,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				RecoveryMsgRollbackToSavepoint *msg;
 
 				msg = (RecoveryMsgRollbackToSavepoint *) (data + data_pos);
-				recovery_switch_to_oxid(msg->oxid, id, false);
+				recovery_switch_to_oxid(msg->oxid, id);
 				recovery_rollback_to_savepoint(msg->parentSubId, id);
 				update_worker_ptr(id, msg->ptr);
 				data_pos += sizeof(RecoveryMsgRollbackToSavepoint);

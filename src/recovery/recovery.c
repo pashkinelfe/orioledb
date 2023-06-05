@@ -255,8 +255,8 @@ pg_atomic_uint64 *recovery_main_retain_ptr;
 pg_atomic_uint64 *recovery_finished_list_ptr;
 bool	   *recovery_single_process;
 
-static void delay_queued_rels(ORelOids oids);
-static void delay_if_queued_indexes(void);
+static void delay_rels_queued_for_idxbuild(ORelOids oids);
+static void delay_if_queued_for_idxbuild(void);
 static void update_run_xmin(void);
 static void free_run_xmin(void);
 static bool need_flush_undo_pos(int worker_id);
@@ -967,7 +967,7 @@ recovery_finish(int worker_id)
 	bool		flush_undo_pos = need_flush_undo_pos(worker_id);
 	HASH_SEQ_STATUS hash_seq;
 
-	delay_if_queued_indexes();
+	delay_if_queued_for_idxbuild();
 
 	if (cur_state)
 	{
@@ -1046,9 +1046,9 @@ recovery_finish(int worker_id)
  * Switches recovery process to other orioledb transaction.
  */
 void
-recovery_switch_to_oxid(OXid oxid, int worker_id, bool set_idxbuildleader)
+recovery_switch_to_oxid(OXid oxid, int worker_id)
 {
-	if(!set_idxbuildleader && worker_id == index_build_leader)
+	if(worker_id == index_build_leader)
 		return;
 
 	if (recovery_oxid != oxid)
@@ -1168,7 +1168,7 @@ recovery_finish_current_oxid(CommitSeqNo csn, XLogRecPtr ptr,
 	OXid		oxid = recovery_oxid;
 	bool		flush_undo_pos = need_flush_undo_pos(worker_id);
 
-	delay_if_queued_indexes();
+	delay_if_queued_for_idxbuild();
 
 	if (!COMMITSEQNO_IS_ABORTED(csn) && sync)
 	{
@@ -2238,7 +2238,7 @@ replay_container(Pointer startPtr, Pointer endPtr,
 			ptr += sizeof(oxid);
 
 			advance_oxids(oxid);
-			recovery_switch_to_oxid(oxid, -1, false);
+			recovery_switch_to_oxid(oxid, -1);
 		}
 		else if (rec_type == WAL_REC_COMMIT || rec_type == WAL_REC_ROLLBACK)
 		{
@@ -2424,7 +2424,7 @@ replay_container(Pointer startPtr, Pointer endPtr,
 			if (sys_tree_num > 0 && xlogRecPtr >= checkpoint_state->sysTreesStartPtr)
 			{
 				Assert(sys_tree_supports_transactions(sys_tree_num));
-				recovery_switch_to_oxid(oxid, -1, false);
+				recovery_switch_to_oxid(oxid, -1);
 
 				cur_state->systree_modified = true;
 				if (sys_tree_num == SYS_TREES_O_TABLES)
@@ -2468,7 +2468,7 @@ replay_container(Pointer startPtr, Pointer endPtr,
 
 			if (single)
 			{
-				recovery_switch_to_oxid(oxid, -1, false);
+				recovery_switch_to_oxid(oxid, -1);
 				apply_modify_record(descr, indexDescr, type, tuple.tuple, false);
 			}
 			else
@@ -2500,7 +2500,7 @@ o_xact_redo_hook(TransactionId xid, XLogRecPtr lsn)
 		if (state->xid != xid)
 			continue;
 
-		recovery_switch_to_oxid(state->oxid, -1, false);
+		recovery_switch_to_oxid(state->oxid, -1);
 
 		if (!single)
 		{
@@ -2544,7 +2544,7 @@ worker_send_msg(int worker_id, Pointer msg, uint64 msg_size)
 }
 
 static void
-delay_if_queued_indexes(void)
+delay_if_queued_for_idxbuild(void)
 {
 	long nentries;
 	bool found;
@@ -2573,7 +2573,7 @@ delay_if_queued_indexes(void)
 }
 
 static void
-delay_queued_rels(ORelOids oids)
+delay_rels_queued_for_idxbuild(ORelOids oids)
 {
 	RecoveryIdxBuildQueueState *hash_elem;
 	bool 		found;
@@ -2629,7 +2629,7 @@ worker_send_modify(int worker_id, BTreeDescr *desc, uint16 recType,
 	ORelOids	oids = desc->oids;
 	OIndexType	type = desc->type;
 
-	delay_queued_rels(oids);
+	delay_rels_queued_for_idxbuild(oids);
 
 	if (wal && !IS_SYS_TREE_OIDS(oids) && type == oIndexPrimary)
 	{

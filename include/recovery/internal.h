@@ -23,7 +23,7 @@
  * Recovery transaction support functions.
  */
 extern void recovery_init(int worker_id);
-extern void recovery_switch_to_oxid(OXid oxid, int worker_id, bool set_idxbuildleader);
+extern void recovery_switch_to_oxid(OXid oxid, int worker_id);
 extern void recovery_finish_current_oxid(CommitSeqNo csn, XLogRecPtr ptr,
 										 int worker_id, bool sync);
 extern void recovery_savepoint(SubTransactionId parentSubid, int worker_id);
