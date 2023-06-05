@@ -78,8 +78,6 @@ typedef struct oIdxShared
 
 	/* recoverycv is used to coordinate index build queue in recovery */
 	ConditionVariable recoverycv;
-	/* Index build in recovery is in progress */
-	bool recoveryidxbuild;
 
 	/*
 	 * mutex protects all fields before heapdesc.

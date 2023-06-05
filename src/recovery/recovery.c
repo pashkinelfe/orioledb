@@ -380,7 +380,6 @@ recovery_shmem_init(Pointer ptr, bool found)
 		pg_atomic_init_u64(recovery_finished_list_ptr, InvalidXLogRecPtr);
 
 		ConditionVariableInit(&recovery_oidxshared->recoverycv);
-		recovery_oidxshared->recoveryidxbuild = false;
 		recovery_oidxshared->new_position = 0;
 		recovery_oidxshared->completed_position = 0;
 	}
