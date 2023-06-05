@@ -2545,25 +2545,21 @@ worker_send_msg(int worker_id, Pointer msg, uint64 msg_size)
 static void
 delay_if_queued_for_idxbuild(void)
 {
-	long nentries;
-	bool found;
-
 	while (idxbuild_oids_hash)
 	{
-		/* Remove hash entries for completed index */
 		HASH_SEQ_STATUS hash_seq;
 		RecoveryIdxBuildQueueState *cur;
 
+		/* Remove hash entries for completed indexes */
 		hash_seq_init(&hash_seq, idxbuild_oids_hash);
 		while ((cur = (RecoveryIdxBuildQueueState *) hash_seq_search(&hash_seq)) != NULL)
 		{
 			if (cur->position <= recovery_oidxshared->completed_position)
-				hash_search(idxbuild_oids_hash, &cur->oids, HASH_REMOVE, &found);
+				hash_search(idxbuild_oids_hash, &cur->oids, HASH_REMOVE, NULL);
 		}
 
-		nentries = hash_get_num_entries(idxbuild_oids_hash);
-
-		if(nentries == 0)
+		/* All completed ? */
+		if(hash_get_num_entries(idxbuild_oids_hash) == 0)
 			break;
 
 		ConditionVariableSleep(&recovery_oidxshared->recoverycv, WAIT_EVENT_PARALLEL_CREATE_INDEX_SCAN);
