@@ -967,6 +967,8 @@ recovery_finish(int worker_id)
 	bool		flush_undo_pos = need_flush_undo_pos(worker_id);
 	HASH_SEQ_STATUS hash_seq;
 
+	delay_if_queued_indexes();
+
 	if (cur_state)
 	{
 		cur_state->needs_wal_flush = oxid_needs_wal_flush;
@@ -1165,9 +1167,6 @@ recovery_finish_current_oxid(CommitSeqNo csn, XLogRecPtr ptr,
 {
 	OXid		oxid = recovery_oxid;
 	bool		flush_undo_pos = need_flush_undo_pos(worker_id);
-
-//	if(worker_id == index_build_leader)
-//		return;
 
 	delay_if_queued_indexes();
 
