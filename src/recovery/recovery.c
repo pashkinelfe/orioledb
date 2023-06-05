@@ -2033,7 +2033,6 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version, i
 	msg->header.type = send_to_leader ? RECOVERY_LEADER_PARALLEL_INDEX_BUILD : RECOVERY_WORKER_PARALLEL_INDEX_BUILD;
 	memcpy(&msg->oids, &oids, sizeof(ORelOids));
 	msg->ix_num = ix_num;
-	msg->recovery_oxid = recovery_oxid;
 	msg->o_table_version = o_table_version;
 	Assert(o_tables_get_by_oids_and_version(oids, &o_table_version) != NULL);
 
@@ -2050,7 +2049,7 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version, i
 		(recovery_oidxshared->new_position)++;
 		state->position = recovery_oidxshared->new_position;
 		msg->current_position = recovery_oidxshared->new_position;
-		recovery_oidxshared->recovery_oxid = recovery_oxid;// Maybe not needed
+		recovery_oidxshared->recovery_oxid = recovery_oxid;
 		worker_send_msg(index_build_leader, (Pointer) msg, sizeof(RecoveryOidsMsgIdxBuild));
 		worker_queue_flush(index_build_leader);
 	}

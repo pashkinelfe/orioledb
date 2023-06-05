@@ -90,7 +90,6 @@ typedef struct
 	RecoveryMsgHeader header;
 	ORelOids          oids;
 	OIndexNumber	  ix_num;
-	OXid 	          recovery_oxid;
 	uint32 	          o_table_version;
 	uint32			  current_position;
 } RecoveryOidsMsgIdxBuild;
