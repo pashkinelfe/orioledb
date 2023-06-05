@@ -77,7 +77,7 @@ typedef struct oIdxShared
 	ConditionVariable workersdonecv;
 
 	ConditionVariable recoverycv;
-	/* Recovery index build is in progress */
+	/* Index build in recovery is in progress */
 	bool recoveryidxbuild;
 
 	/*
