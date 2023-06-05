@@ -2043,9 +2043,12 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version, i
                                                       HASH_ENTER,
                                                       NULL);
 
-		(recovery_oidxshared->new_position)++;
+		SpinLockAcquire(&recovery_oidxshared->mutex);
+		recovery_oidxshared->new_position++;
 		state->position = recovery_oidxshared->new_position;
-		msg->current_position = recovery_oidxshared->new_position;
+		SpinLockRelease(&recovery_oidxshared->mutex);
+
+		msg->current_position = state->position;
 		recovery_oidxshared->recovery_oxid = recovery_oxid;
 		worker_send_msg(index_build_leader, (Pointer) msg, sizeof(RecoveryOidsMsgIdxBuild));
 		worker_queue_flush(index_build_leader);
