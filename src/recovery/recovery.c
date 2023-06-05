@@ -2017,8 +2017,8 @@ clean_workers_oids(void)
 
 #if PG_VERSION_NUM >= 140000
 void
-recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version, int nindices,
-		bool send_to_leader)
+recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version,
+				   int nindices, bool send_to_leader)
 {
 	RecoveryOidsMsgIdxBuild *msg;
 	int                             i;
@@ -2027,7 +2027,7 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version, i
 	Assert(ORelOidsIsValid(oids));
 	msg = palloc0(sizeof(RecoveryOidsMsgIdxBuild));
 	msg->header.type = send_to_leader ? RECOVERY_LEADER_PARALLEL_INDEX_BUILD : RECOVERY_WORKER_PARALLEL_INDEX_BUILD;
-	memcpy(&msg->oids, &oids, sizeof(ORelOids));
+	msg->oids = oids;
 	msg->ix_num = ix_num;
 	msg->o_table_version = o_table_version;
 	Assert(o_tables_get_by_oids_and_version(oids, &o_table_version) != NULL);
