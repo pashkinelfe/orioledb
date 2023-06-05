@@ -1012,8 +1012,8 @@ recovery_finish(int worker_id)
 
 	if (worker_id < 0)
 	{
-	hash_destroy(idxbuild_oids_hash);
-	idxbuild_oids_hash = NULL;
+		hash_destroy(idxbuild_oids_hash);
+		idxbuild_oids_hash = NULL;
 	}
 	release_undo_size(UndoReserveTxn);
 	free_retained_undo_location();
@@ -1048,9 +1048,6 @@ recovery_finish(int worker_id)
 void
 recovery_switch_to_oxid(OXid oxid, int worker_id)
 {
-	if(worker_id == index_build_leader)
-		return;
-
 	if (recovery_oxid != oxid)
 	{
 		bool		found;
