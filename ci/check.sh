@@ -16,7 +16,7 @@ sudo sh -c "echo \"/tmp/cores-$GITHUB_SHA-$TIMESTAMP/%t_%p.core\" > /proc/sys/ke
 
 
 status=0
-THREADS=4
+THREADS=1
 
 cd orioledb
 if [ $CHECK_TYPE = "valgrind_1" ]; then
