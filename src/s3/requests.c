@@ -31,14 +31,14 @@ PG_FUNCTION_INFO_V1(s3_put);
 static void
 hmac_sha256(char *input, char *output, char *secretkey, int secretkeylen)
 {
-	HMAC_CTX   *ctx;
+	EVP_MAC_CTX   *ctx;
 	unsigned int len;
 
-	ctx = HMAC_CTX_new();
-	HMAC_Init_ex(ctx, secretkey, secretkeylen, EVP_sha256(), NULL);
-	HMAC_Update(ctx, (unsigned char *) input, strlen(input));
-	HMAC_Final(ctx, (unsigned char *) output, &len);
-	HMAC_CTX_free(ctx);
+	ctx = EVP_MAC_CTX_new();
+	EVP_MAC_init(ctx, secretkey, secretkeylen, EVP_sha256(), NULL);
+	EVP_MAC_update(ctx, (unsigned char *) input, strlen(input));
+	EVP_MAC_final(ctx, (unsigned char *) output, &len);
+	EVP_MAC_CTX_free(ctx);
 
 	Assert(len == 32);
 }
