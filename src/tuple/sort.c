@@ -145,11 +145,28 @@ comparetup_orioledb_index(const SortTuple *a, const SortTuple *b, Tuplesortstate
 	 */
 	if (arg->enforceUnique && !equal_hasnull)
 	{
+		Datum d1[32]={0},
+		      d2[32]={0};
+		bool  n1[32]={0},
+		      n2[32]={0};
+
+		d1[0]=a->datum1;
+		d2[0]=b->datum1;
+		n1[0]=a->isnull1;
+		n2[0]=b->isnull1;
+
+		sortKey = public->sortKeys;
+		for (nkey = 1; nkey < public->nKeys; nkey++, sortKey++)
+		{
+			attno = sortKey->ssup_attno;
+			d1[nkey] = o_fastgetattr(ltup, attno, tupDesc, spec, &n1[nkey]);
+			d2[nkey] = o_fastgetattr(rtup, attno, tupDesc, spec, &n2[nkey]);
+		}
 		ereport(ERROR,
 				(errcode(ERRCODE_UNIQUE_VIOLATION),
 				 errmsg("could not create unique index \"%s\"",
 						arg->id->name.data),
-				 errdetail("Duplicate keys exist.")));
+				 errdetail("Duplicate keys exist. nkey: %d public_nkeys %d ltup: [%ld,%d][%ld,%d][%ld,%d][%ld,%d] rtup: [%ld,%d][%ld,%d][%ld,%d][%ld,%d]", nkey, public->nKeys, d1[0],n1[0],d1[1],n1[1],d1[2],n1[2], d1[3], n1[3], d2[0],n2[0],d2[1],n2[1],d2[2],n2[2],d2[3],n2[3])));
 	}
 
 	return 0;
