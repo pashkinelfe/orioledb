@@ -1263,7 +1263,7 @@ void
 build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num,
 					  bool in_dedicated_recovery_worker)
 {
-	Tuplesortstate *sortstate;
+	Tuplesortstate **sortstates;
 	Relation	tableRelation,
 				indexRelation = NULL;
 	CheckpointFileHeader fileHeader;
@@ -1315,18 +1315,14 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num,
 	}
 
 	/* Begin serial/leader tuplesort */
-	sortstate = tuplesort_begin_orioledb_index(idx, work_mem, false, coordinate);
+	sortstates = palloc0(sizeof(Pointer));
+	sortstates[0] = tuplesort_begin_orioledb_index(idx, work_mem, false, coordinate);
 
 	/* Fill spool using either serial or parallel heap scan */
 	if (!buildstate.btleader)
 	{
 		/* Serial build */
-		Tuplesortstate **sortstates;
-
-		sortstates = palloc0(sizeof(Pointer));
-		sortstates[0] = sortstate;
-		build_secondary_index_worker_heap_scan(descr, idx, NULL, sortstates, false, &heap_tuples, &index_tuples);
-		pfree(sortstates);
+		build_secondary_index_worker_heap_scan(descr, idx, NULL, sortstates[0], false, &heap_tuples, &index_tuples);
 	}
 	else
 	{
@@ -1337,13 +1333,14 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num,
 	}
 
 	o_set_syscache_hooks();
-	tuplesort_performsort(sortstate);
+	tuplesort_performsort(sortstates[0]);
 	o_unset_syscache_hooks();
 
-	btree_write_index_data(&idx->desc, idx->leafTupdesc, sortstate,
+	btree_write_index_data(&idx->desc, idx->leafTupdesc, sortstates[0],
 						   ctid, &fileHeader);
 	/* End serial/leader sort */
-	tuplesort_end(sortstate);
+	tuplesort_end(sortstates[0]);
+	pfree(sortstates);
 
 	if (buildstate.btleader)
 	{
