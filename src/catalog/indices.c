@@ -1388,46 +1388,28 @@ build_secondary_index(OTable *o_table, OTableDescr *descr, OIndexNumber ix_num,
 	pfree(index_tuples);
 }
 
-void
-rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
-				OTable *o_table, OTableDescr *descr)
+void rebuild_indices_worker_heap_scan(OTableDescr *old_descr, OTableDescr *descr,
+									  ParallelOScanDesc poscan, Tuplesortstate **sortstates,
+									  Tuplesortstate *toastSortState,
+									  bool progress, double *heap_tuples, double *index_tuples[], uint64 *ctid)
 {
 	void	   *sscan;
 	OIndexDescr *idx;
-	Tuplesortstate **sortstates;
-	Tuplesortstate *toastSortState;
+	int i;
 	TupleTableSlot *primarySlot;
-	int			i;
-	Relation	tableRelation;
-	double		heap_tuples,
-			   *index_tuples;
-	uint64		ctid;
-	CheckpointFileHeader *fileHeaders;
-	CheckpointFileHeader toastFileHeader;
 
-	sortstates = (Tuplesortstate **) palloc(sizeof(Tuplesortstate *) *
-											descr->nIndices);
-	fileHeaders = (CheckpointFileHeader *) palloc(sizeof(CheckpointFileHeader) *
-												  descr->nIndices);
-
-	for (i = 0; i < descr->nIndices; i++)
-	{
-		idx = descr->indices[i];
-		sortstates[i] = tuplesort_begin_orioledb_index(idx, work_mem, false, NULL);
-	}
 	primarySlot = MakeSingleTupleTableSlot(old_descr->tupdesc, &TTSOpsOrioleDB);
 
-	btree_open_smgr(&descr->toast->desc);
-	toastSortState = tuplesort_begin_orioledb_toast(descr->toast,
-													descr->indices[0],
-													work_mem, false, NULL);
 
-	sscan = make_btree_seq_scan(&GET_PRIMARY(old_descr)->desc, COMMITSEQNO_INPROGRESS, NULL);
+	sscan = make_btree_seq_scan(&GET_PRIMARY(old_descr)->desc, COMMITSEQNO_INPROGRESS, poscan);
 
-	heap_tuples = 0;
-	ctid = 0;
-	index_tuples = palloc0(sizeof(double) * descr->nIndices);
-	while (scan_getnextslot_allattrs(sscan, old_descr, primarySlot, &heap_tuples))
+	*heap_tuples = 0;
+	for (i = 0; i < descr->nIndices; i++)
+	{
+		(*index_tuples)[i] = 0;
+	}
+
+	while (scan_getnextslot_allattrs(sscan, old_descr, primarySlot, heap_tuples))
 	{
 		tts_orioledb_detoast(primarySlot);
 		tts_orioledb_toast(primarySlot, descr);
@@ -1442,16 +1424,16 @@ rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
 												idx->econtext))
 				continue;
 
-			index_tuples[i]++;
+			(*index_tuples)[i]++;
 
 			if (i == 0)
 			{
 				if (idx->primaryIsCtid)
 				{
-					primarySlot->tts_tid.ip_posid = (OffsetNumber) ctid;
+					primarySlot->tts_tid.ip_posid = (OffsetNumber) (*ctid);
 					BlockIdSet(&primarySlot->tts_tid.ip_blkid,
-							   (uint32) (ctid >> 16));
-					ctid++;
+							   (uint32) (*ctid >> 16));
+					(*ctid)++;
 				}
 				newTup = tts_orioledb_form_orphan_tuple(primarySlot, descr);
 			}
@@ -1472,6 +1454,44 @@ rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
 
 	ExecDropSingleTupleTableSlot(primarySlot);
 	free_btree_seq_scan(sscan);
+}
+
+void
+rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
+				OTable *o_table, OTableDescr *descr)
+{
+	Tuplesortstate **sortstates;
+	Tuplesortstate *toastSortState;
+	int			i;
+	Relation	tableRelation;
+	double		heap_tuples;
+	double	   *index_tuples;
+	uint64		ctid;
+	CheckpointFileHeader *fileHeaders;
+	CheckpointFileHeader toastFileHeader;
+	OIndexDescr *idx;
+
+	sortstates = (Tuplesortstate **) palloc(sizeof(Tuplesortstate *) *
+											descr->nIndices);
+	fileHeaders = (CheckpointFileHeader *) palloc(sizeof(CheckpointFileHeader) *
+												  descr->nIndices);
+
+	ctid = 0;
+	index_tuples = palloc0(sizeof(double) * descr->nIndices);
+
+	/* Do sequential rebuild */
+	for (i = 0; i < descr->nIndices; i++)
+	{
+		idx = descr->indices[i];
+		sortstates[i] = tuplesort_begin_orioledb_index(idx, work_mem, false, NULL);
+	}
+
+	btree_open_smgr(&descr->toast->desc);
+	toastSortState = tuplesort_begin_orioledb_toast(descr->toast,
+													descr->indices[0],
+													work_mem, false, NULL);
+
+	rebuild_indices_worker_heap_scan(old_descr, descr, NULL, sortstates, toastSortState, false, &heap_tuples, &index_tuples, &ctid);
 
 	o_set_syscache_hooks();
 	for (i = 0; i < descr->nIndices; i++)
