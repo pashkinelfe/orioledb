@@ -44,9 +44,13 @@ typedef struct ODefineIndexContext
 typedef struct oIdxSpool
 {
 	Tuplesortstate **sortstates;	/* state data for tuplesort.c */
+	Tuplesortstate *toastSortState;
 	Relation	index;
 	OTable	   *o_table;
+	OTable	   *old_o_table;
 	OTableDescr *descr;
+	OTableDescr *old_descr;
+	uint64		ctid;
 	bool		isunique;
 
 } oIdxSpool;
@@ -114,7 +118,10 @@ typedef struct oIdxShared
 	uint32		completed_position;
 	OXid		recovery_oxid;
 	Size		o_table_size;
+	Size        old_o_table_size;
+	bool		is_rebuild;
 	char		o_table_serialized[];
+	/* old_o_table_serialized follows */
 } oIdxShared;
 
 extern oIdxShared *recovery_oidxshared;
@@ -134,7 +141,7 @@ extern bool is_in_indexes_rebuild(void);
 
 extern void rebuild_indices_insert_placeholders(OTableDescr *descr);
 extern void rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
-							OTable *o_table, OTableDescr *descr);
+							OTable *o_table, OTableDescr *descr, bool in_dedicated_recovery_worker);
 extern void assign_new_oids(OTable *oTable, Relation rel);
 extern void recreate_o_table(OTable *old_o_table, OTable *o_table);
 extern void build_secondary_index(OTable *o_table, OTableDescr *descr,

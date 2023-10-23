@@ -2147,7 +2147,7 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 					rebuild_indices_insert_placeholders(&tmp_descr);
 					o_tables_meta_unlock_no_wal();
 					rebuild_indices(old_o_table, old_descr,
-									new_o_table, &tmp_descr);
+									new_o_table, &tmp_descr, false);
 				}
 				else
 				{
@@ -2195,7 +2195,7 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 					rebuild_indices_insert_placeholders(&tmp_descr);
 					o_tables_meta_unlock_no_wal();
 					rebuild_indices(old_o_table, old_descr,
-									new_o_table, &tmp_descr);
+									new_o_table, &tmp_descr, false);
 				}
 				else
 				{
