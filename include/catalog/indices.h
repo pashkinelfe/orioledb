@@ -44,7 +44,6 @@ typedef struct ODefineIndexContext
 typedef struct oIdxSpool
 {
 	Tuplesortstate **sortstates;	/* state data for tuplesort.c */
-	Tuplesortstate *toastSortState;
 	Relation	index;
 	OTable	   *o_table;
 	OTable	   *old_o_table;
@@ -109,7 +108,7 @@ typedef struct oIdxShared
 	double		indtuples[INDEX_MAX_KEYS];
 
 	/* Oriole-specific */
-	void		(*worker_heap_sort_fn) (oIdxSpool *, void *, Sharedsort *, int sortmem, bool progress);
+	void		(*worker_heap_sort_fn) (oIdxSpool *, void *, Sharedsort **, int sortmem, bool progress);
 	ParallelOScanDescData poscan;
 	OIndexNumber ix_num;
 	BgWorkerHandle *worker_handle;
@@ -119,13 +118,13 @@ typedef struct oIdxShared
 	OXid		recovery_oxid;
 	Size		o_table_size;
 	Size        old_o_table_size;
-	bool		is_rebuild;
+	bool		isrebuild;
 	char		o_table_serialized[];
 	/* old_o_table_serialized follows */
 } oIdxShared;
 
 extern oIdxShared *recovery_oidxshared;
-extern Sharedsort *recovery_sharedsort;
+extern Sharedsort **recovery_sharedsort;
 
 extern void o_define_index_validate(Relation rel, IndexStmt *stmt,
 									bool skip_build,
