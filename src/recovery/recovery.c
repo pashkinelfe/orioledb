@@ -227,6 +227,7 @@ int			recovery_idx_pool_size_guc;
  */
 Size		recovery_queue_size_guc;
 
+int 		recovery_parallel_indices_rebuild_limit_guc;
 /*
  * Are TOAST trees consistent with primary indices.
  */
@@ -349,7 +350,8 @@ recovery_shmem_init(Pointer ptr, bool found)
 	ptr += CACHELINEALIGN(_o_index_parallel_estimate_shared(0));
 
 	recovery_sharedsort = (Sharedsort *) ptr;
-	ptr += CACHELINEALIGN(tuplesort_estimate_shared(recovery_idx_pool_size_guc + 1));
+	ptr += CACHELINEALIGN(tuplesort_estimate_shared(recovery_idx_pool_size_guc + 1) *
+			(recovery_parallel_indices_rebuild_limit_guc + 1));
 
 	recovery_queue_data_size = recovery_queue_size_guc;
 
@@ -2037,6 +2039,7 @@ clean_workers_oids(void)
 #if PG_VERSION_NUM >= 140000
 void
 recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version,
+				   ORelOids old_oids, uint32 old_o_table_version,   /* Non-zero only for rebuild */
 				   int nindices, bool send_to_leader)
 {
 	RecoveryOidsMsgIdxBuild *msg;
@@ -2047,8 +2050,10 @@ recovery_send_oids(ORelOids oids, OIndexNumber ix_num, uint32 o_table_version,
 	msg = palloc0(sizeof(RecoveryOidsMsgIdxBuild));
 	msg->header.type = send_to_leader ? RECOVERY_LEADER_PARALLEL_INDEX_BUILD : RECOVERY_WORKER_PARALLEL_INDEX_BUILD;
 	msg->oids = oids;
+	msg->old_oids = old_oids;
 	msg->ix_num = ix_num;
 	msg->o_table_version = o_table_version;
+	msg->old_o_table_version = old_o_table_version;
 	Assert(o_tables_get_by_oids_and_version(oids, &o_table_version) != NULL);
 
 	if (send_to_leader)
@@ -2146,8 +2151,28 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 					old_descr = o_fetch_table_descr(old_o_table->oids);
 					rebuild_indices_insert_placeholders(&tmp_descr);
 					o_tables_meta_unlock_no_wal();
+
+					Assert(is_recovery_in_progress());
+#if PG_VERSION_NUM >= 140000
+
+				/*
+				 * In main recovery worker send message to main index creation
+				 * worker in dedicated recovery workers pool and exit
+				 */
+				if (!*recovery_single_process)
+				{
+					Assert(new_o_table->nindices == nindices);
+					/* Send recovery message to become a leader */
+					recovery_oidxshared->isrebuild = true;
+					recovery_send_oids(oids, InvalidIndexNumber, new_o_table->version, old_o_table->oids, old_o_table->version, nindices, true);
+				}
+				else
 					rebuild_indices(old_o_table, old_descr,
 									new_o_table, &tmp_descr, false);
+#else
+				rebuild_indices(old_o_table, old_descr,
+								new_o_table, &tmp_descr, false);
+#endif
 				}
 				else
 				{
@@ -2170,9 +2195,11 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 				 */
 				if (!*recovery_single_process)
 				{
+					ORelOids	 invalid_oids;
 					Assert(new_o_table->nindices == nindices);
 					/* Send recovery message to become a leader */
-					recovery_send_oids(oids, ix_num, new_o_table->version, nindices, true);
+					ORelOidsSetInvalid(invalid_oids);
+					recovery_send_oids(oids, ix_num, new_o_table->version, invalid_oids, 0, nindices, true);
 				}
 				else
 					build_secondary_index(new_o_table, &tmp_descr, ix_num, false);
@@ -2194,8 +2221,28 @@ handle_o_tables_meta_unlock(ORelOids oids, Oid oldRelnode)
 					old_descr = o_fetch_table_descr(old_o_table->oids);
 					rebuild_indices_insert_placeholders(&tmp_descr);
 					o_tables_meta_unlock_no_wal();
+#if PG_VERSION_NUM >= 140000
+
+					/*
+					 * In main recovery worker send message to main index creation
+					 * worker in dedicated recovery workers pool and exit
+					 */
+					if (!*recovery_single_process)
+					{
+						Assert(new_o_table->nindices == nindices);
+						/* Send recovery message to become a leader */
+						recovery_oidxshared->isrebuild = true;
+						recovery_send_oids(oids, InvalidIndexNumber, new_o_table->version,
+										   old_o_table->oids, old_o_table->version,
+										   nindices, true);
+					}
+					else
+						rebuild_indices(old_o_table, old_descr,
+										new_o_table, &tmp_descr, false);
+#else
 					rebuild_indices(old_o_table, old_descr,
 									new_o_table, &tmp_descr, false);
+#endif
 				}
 				else
 				{

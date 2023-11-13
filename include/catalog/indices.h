@@ -27,6 +27,7 @@
 #define index_build_first_worker (recovery_pool_size_guc + 1)
 #define index_build_last_worker  (recovery_pool_size_guc + recovery_idx_pool_size_guc - 1)
 #define index_build_workers 	 (recovery_idx_pool_size_guc - 1)
+#define recovery_parallel_indices_rebuild_limit  (recovery_parallel_indices_rebuild_limit_guc)
 typedef struct BgWorkerHandle
 {
 	int			slot;
@@ -118,13 +119,14 @@ typedef struct oIdxShared
 	OXid		recovery_oxid;
 	Size		o_table_size;
 	Size        old_o_table_size;
+	Size 		sharedsort_size;
 	bool		isrebuild;
 	char		o_table_serialized[];
 	/* old_o_table_serialized follows */
 } oIdxShared;
 
 extern oIdxShared *recovery_oidxshared;
-extern Sharedsort **recovery_sharedsort;
+extern Sharedsort *recovery_sharedsort;
 
 extern void o_define_index_validate(Relation rel, IndexStmt *stmt,
 									bool skip_build,
@@ -147,6 +149,6 @@ extern void build_secondary_index(OTable *o_table, OTableDescr *descr,
 								  OIndexNumber ix_num, bool in_dedicated_recovery_worker);
 PGDLLEXPORT void _o_index_parallel_build_main(dsm_segment *seg, shm_toc *toc);
 extern void _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
-										  OTable *recovery_o_table);
+										  OTable *recovery_o_table, OTable *recovery_old_o_table);
 extern Size _o_index_parallel_estimate_shared(Size o_table_size);
 #endif							/* __INDICES_H__ */
