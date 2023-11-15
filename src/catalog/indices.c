@@ -724,7 +724,7 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 	ParallelContext *pcxt;
 	int			scantuplesortstates;
 	Size		estbtshared;
-	Size		estsort;
+	Size		estsort = 0;
 	oIdxShared *btshared;
 	Sharedsort **sharedsort;
 	oIdxSpool  *btspool = buildstate->spool;
@@ -732,7 +732,7 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 	WalUsage   *walusage;
 	BufferUsage *bufferusage;
 	bool		leaderparticipates = true;
-	int			o_table_size;
+	int			o_table_size = 0;
 	Pointer		o_table_serialized;
 	int 		old_o_table_size = 0;
 	Pointer		old_o_table_serialized;
