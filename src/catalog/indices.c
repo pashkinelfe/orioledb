@@ -1188,7 +1188,12 @@ _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 		btspool->o_table = recovery_o_table;
 		if (btshared->isrebuild)
 		{
+			Assert(recovery_old_o_table);
 			btspool->old_o_table = recovery_old_o_table;
+		}
+		else
+		{
+			Assert(recovery_old_o_table == NULL);
 		}
 	}
 
@@ -1204,29 +1209,23 @@ _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 
 	if (!is_recovery_in_progress())
 	{
-		if (!btshared->isrebuild)
+		if (btsharerd->isrebuild)
 		{
-			sharedsort = (Sharedsort **) palloc0(sizeof(Sharedsort *));
-			sharedsort[0] = shm_toc_lookup(toc, PARALLEL_KEY_TUPLESORT, false);
-		}
-		else
-		{
-
 			sharedsort = (Sharedsort **) palloc0(sizeof(Sharedsort *) * (btspool->descr->nIndices + 1));
 			for (i = 0; i < btspool->descr->nIndices + 1; i++)
 			{
 				sharedsort[i] = shm_toc_lookup(toc, PARALLEL_KEY_TUPLESORT + i, false);
 			}
 		}
+		else
+		{
+			sharedsort = (Sharedsort **) palloc0(sizeof(Sharedsort *));
+			sharedsort[0] = shm_toc_lookup(toc, PARALLEL_KEY_TUPLESORT, false);
+		}
 	}
 	else
 	{
-		if (!btshared->isrebuild)
-		{
-			sharedsort = (Sharedsort **) palloc0(sizeof(Sharedsort *));
-			sharedsort[0] = recovery_sharedsort;
-		}
-		else
+		if (btshared->isrebuild)
 		{
 			sharedsort = (Sharedsort **) palloc0(sizeof(Sharedsort *) * (btspool->descr->nIndices + 1));
 			for (i = 0; i < btspool->descr->nIndices + 1; i++)
@@ -1234,18 +1233,23 @@ _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 				sharedsort[i] = (Sharedsort *) ((char *) recovery_sharedsort + i * btshared->sharedsort_size);
 			}
 		}
+		else
+		{
+			sharedsort = (Sharedsort **) palloc0(sizeof(Sharedsort *));
+			sharedsort[0] = recovery_sharedsort;
+		}
 	}
 
-	if (!btshared->isrebuild)
-	{
-		tuplesort_attach_shared(sharedsort[0], seg);
-	}
-	else
+	if (btshared->isrebuild)
 	{
 		for (i = 0; i < btspool->descr->nIndices + 1; i++)
 		{
 			tuplesort_attach_shared(sharedsort[i], seg);
 		}
+	}
+	else
+	{
+		tuplesort_attach_shared(sharedsort[0], seg);
 	}
 
 	/* Prepare to track buffer usage during parallel execution */

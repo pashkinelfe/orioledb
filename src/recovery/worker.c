@@ -364,6 +364,10 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 					Assert(old_o_table);
 					Assert(old_o_table->version == msg->old_o_table_version);
 				}
+				else
+				{
+					old_o_table = NULL;
+				}
 
 				if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD)
 				{
@@ -411,6 +415,10 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 
 				data_pos += sizeof(RecoveryOidsMsgIdxBuild);
 				pfree(o_table);
+				if (recovery_oidxshared->isrebuild)
+				{
+					pfree(old_o_table);
+				}
 			}
 #endif
 			else if (recovery_header->type & RECOVERY_COMMIT)
