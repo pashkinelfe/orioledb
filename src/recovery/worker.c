@@ -372,7 +372,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 				if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD)
 				{
 					OTableDescr *o_descr = (OTableDescr *) palloc0(sizeof(OTableDescr));
-					OTableDescr *old_o_descr;
+					OTableDescr *old_o_descr = NULL;
 
 					Assert(id == index_build_leader);
 					o_fill_tmp_table_descr(o_descr, o_table);
