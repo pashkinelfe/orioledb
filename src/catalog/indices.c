@@ -1209,18 +1209,20 @@ _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 
 	if (!is_recovery_in_progress())
 	{
-		if (btsharerd->isrebuild)
+		if (btshared->isrebuild)
 		{
 			sharedsort = (Sharedsort **) palloc0(sizeof(Sharedsort *) * (btspool->descr->nIndices + 1));
 			for (i = 0; i < btspool->descr->nIndices + 1; i++)
 			{
 				sharedsort[i] = shm_toc_lookup(toc, PARALLEL_KEY_TUPLESORT + i, false);
+				tuplesort_attach_shared(sharedsort[i], seg);
 			}
 		}
 		else
 		{
 			sharedsort = (Sharedsort **) palloc0(sizeof(Sharedsort *));
 			sharedsort[0] = shm_toc_lookup(toc, PARALLEL_KEY_TUPLESORT, false);
+			tuplesort_attach_shared(sharedsort[0], seg);
 		}
 	}
 	else
@@ -1240,17 +1242,6 @@ _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 		}
 	}
 
-	if (btshared->isrebuild)
-	{
-		for (i = 0; i < btspool->descr->nIndices + 1; i++)
-		{
-			tuplesort_attach_shared(sharedsort[i], seg);
-		}
-	}
-	else
-	{
-		tuplesort_attach_shared(sharedsort[0], seg);
-	}
 
 	/* Prepare to track buffer usage during parallel execution */
 	InstrStartParallelQuery();
@@ -1560,8 +1551,7 @@ rebuild_indices_worker_sort(oIdxSpool *btspool, void *bt_shared, Sharedsort **sh
 				heaptuples;
 	oIdxShared *btshared = (oIdxShared *) bt_shared;
 	ParallelOScanDesc poscan = &btshared->poscan;
-	OTable	   *o_table;
-	int i;
+	int 		i;
 	int 		nindices = btspool->descr->nIndices;
 
 	indtuples = palloc0(sizeof(double) * nindices);
@@ -1574,8 +1564,6 @@ rebuild_indices_worker_sort(oIdxSpool *btspool, void *bt_shared, Sharedsort **sh
 		coordinate[i].nParticipants = -1;
 		coordinate[i].sharedsort = sharedsort[i];
 	}
-
-	o_table = btspool->o_table;
 
 	if (is_recovery_in_progress() && !(*recovery_single_process))
 	{
@@ -1730,7 +1718,6 @@ rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
 
 	/* Attempt to launch parallel worker scan when required */
 	if ((in_dedicated_recovery_worker || max_parallel_maintenance_workers > 0))
-//			&& descr->nIndices <= recovery_parallel_indices_rebuild_limit_guc)
 	{
 		index_tuples = (double *) palloc0(sizeof(double) * descr->nIndices);
 
