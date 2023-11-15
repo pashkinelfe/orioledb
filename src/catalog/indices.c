@@ -861,11 +861,11 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 		if (buildstate->isrebuild)
 		{
 			sharedsort = (Sharedsort **) palloc0(sizeof(Sharedsort *) * (nindices + 1));
-			estsort = tuplesort_estimate_shared(recovery_idx_pool_size_guc + 1);
 
 			for (i = 0; i < nindices + 1; i++)
 			{
-				sharedsort[i] = (Sharedsort *) ((char *) recovery_sharedsort + estsort * i);
+				sharedsort[i] = (Sharedsort *) ((char *) recovery_sharedsort +
+												tuplesort_estimate_shared(recovery_idx_pool_size_guc + 1) * i);
 			}
 		}
 		else
@@ -884,7 +884,6 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 	btshared->ix_num = buildstate->ix_num;
 	btshared->scantuplesortstates = scantuplesortstates;
 	btshared->worker_heap_sort_fn = buildstate->worker_heap_sort_fn;
-	btshared->sharedsort_size = estsort;
 	btshared->o_table_size = o_table_size;
 	btshared->old_o_table_size = old_o_table_size;
 
@@ -1232,7 +1231,8 @@ _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 			sharedsort = (Sharedsort **) palloc0(sizeof(Sharedsort *) * (btspool->descr->nIndices + 1));
 			for (i = 0; i < btspool->descr->nIndices + 1; i++)
 			{
-				sharedsort[i] = (Sharedsort *) ((char *) recovery_sharedsort + i * btshared->sharedsort_size);
+				sharedsort[i] = (Sharedsort *) ((char *) recovery_sharedsort +
+												i * tuplesort_estimate_shared(recovery_idx_pool_size_guc + 1));
 			}
 		}
 		else

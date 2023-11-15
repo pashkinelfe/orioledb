@@ -119,7 +119,6 @@ typedef struct oIdxShared
 	OXid		recovery_oxid;
 	Size		o_table_size;
 	Size        old_o_table_size;
-	Size 		sharedsort_size;
 	bool		isrebuild;
 	char		o_table_serialized[];
 	/* old_o_table_serialized follows */
