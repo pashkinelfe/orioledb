@@ -350,7 +350,7 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 			{
 				RecoveryOidsMsgIdxBuild *msg = (RecoveryOidsMsgIdxBuild *) (data + data_pos);
 				OTable	   *o_table,
-						   *old_o_table;
+						   *old_o_table = NULL;
 
 				Assert(ORelOidsIsValid(msg->oids));
 				recovery_oxid = recovery_oidxshared->recovery_oxid;
@@ -363,10 +363,6 @@ recovery_queue_process(shm_mq_handle *queue, int id)
 					old_o_table = o_tables_get_by_oids_and_version(msg->old_oids, &msg->old_o_table_version);
 					Assert(old_o_table);
 					Assert(old_o_table->version == msg->old_o_table_version);
-				}
-				else
-				{
-					old_o_table = NULL;
 				}
 
 				if (recovery_header->type & RECOVERY_LEADER_PARALLEL_INDEX_BUILD)

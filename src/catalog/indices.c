@@ -839,16 +839,16 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 		btshared = recovery_oidxshared;
 #if PG_VERSION_NUM >= 140000
 		btshared->nrecoveryworkers = *recovery_single_process ? 0 : (recovery_idx_pool_size_guc - 1);
-		/* In recovery the number of allocated sharedsorts is limited by guc. If the number of indexes in relation
-		 * exceds it, the indices will be rebuild only sequentially.
+		/*
+		 * In recovery the number of pre-allocated sharedsorts is limited by guc. If actual number of
+		 * indexes in relation exceeds it, the indices will be rebuilding sequentially.
 		 */
 		if (buildstate->isrebuild && nindices > recovery_parallel_indices_rebuild_limit_guc)
 		{
-			elog(LOG, "Number of relation indices %d is more than %d. Rebuild will be processed serially Try increasing recovery_parallel_indices_rebuild_limit_guc", nindices, recovery_parallel_indices_rebuild_limit_guc);
+			elog(WARNING, "Number of relation indices %d is more than %d. Rebuild will be processed serially. Try increasing recovery_parallel_indices_rebuild_limit_guc", nindices, recovery_parallel_indices_rebuild_limit_guc);
 			btshared->nrecoveryworkers = 0;
 		}
 #else
-
 		/*
 		 * In PG13 parallel index build in recovery is disabled due to
 		 * tuplesort_initialize_shared() can not work with NULL seg. This is
@@ -864,8 +864,7 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 
 			for (i = 0; i < nindices + 1; i++)
 			{
-				sharedsort[i] = (Sharedsort *) ((char *) recovery_sharedsort +
-												tuplesort_estimate_shared(recovery_idx_pool_size_guc + 1) * i);
+				sharedsort[i] = (Sharedsort *) ((char *) recovery_sharedsort + i * tuplesort_estimate_shared(recovery_idx_pool_size_guc + 1));
 			}
 		}
 		else
@@ -873,7 +872,6 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 			sharedsort = (Sharedsort **) palloc0(sizeof(Sharedsort *));
 			sharedsort[0] = recovery_sharedsort;
 		}
-
 	}
 
 	Assert ((buildstate->isrebuild && buildstate->ix_num == InvalidIndexNumber) || (!buildstate->isrebuild && buildstate->ix_num != InvalidIndexNumber ));
@@ -960,7 +958,6 @@ _o_index_begin_parallel(oIdxBuildState *buildstate, bool isconcurrent, int reque
 				recovery_send_oids(btspool->o_table->oids, buildstate->ix_num, btspool->o_table->version,
 								   invalidOids, 0,
 								   btspool->o_table->nindices, false);
-
 			}
 		}
 #endif
