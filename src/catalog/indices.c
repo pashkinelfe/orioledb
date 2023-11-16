@@ -1184,6 +1184,7 @@ _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 		Assert(seg == NULL && toc == NULL);
 		Assert(recovery_o_table);
 		btshared = recovery_oidxshared;
+		Assert(btshared->o_table_size == 0 && btshared->old_o_table_size == 0);
 		btspool->o_table = recovery_o_table;
 		if (btshared->isrebuild)
 		{
@@ -1743,7 +1744,6 @@ rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
 	 */
 	if (buildstate.btleader)
 	{
-
 		for (i = 0; i < descr->nIndices + 1; i++)
 		{
 			coordinate[i] = palloc0(sizeof(SortCoordinateData));
