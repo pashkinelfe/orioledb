@@ -1154,7 +1154,6 @@ _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 	/* Initialize worker's own spool */
 	btspool = (oIdxSpool *) palloc0(sizeof(oIdxSpool));
 
-
 	if (!is_recovery_in_progress())
 	{
 		/*
@@ -1165,11 +1164,17 @@ _o_index_parallel_build_inner(dsm_segment *seg, shm_toc *toc,
 		Assert(recovery_o_table == NULL && recovery_old_o_table == NULL);
 		/* Look up nbtree shared state */
 		btshared = shm_toc_lookup(toc, PARALLEL_KEY_BTREE_SHARED, false);
+		Assert(btshared->o_table_size > 0);
 		btspool->o_table = deserialize_o_table((Pointer) (&btshared->o_table_serialized), btshared->o_table_size);
 		if (btshared->isrebuild)
 		{
 			/* old_o_table_serialized is placed just after o_table_serialized in btshared */
+			Assert(btshared->old_o_table_size > 0);
 			btspool->old_o_table = deserialize_o_table(((Pointer) (&btshared->o_table_serialized)) + btshared->o_table_size, btshared->old_o_table_size);
+		}
+		else
+		{
+			Assert(btspool->old_o_table == NULL);
 		}
 	}
 	else
