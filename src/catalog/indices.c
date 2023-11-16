@@ -1711,6 +1711,7 @@ rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
 										    (descr->nIndices + 1));
 	fileHeaders = (CheckpointFileHeader *) palloc(sizeof(CheckpointFileHeader) *
 												  (descr->nIndices + 1));
+	coordinate = (SortCoordinate *) palloc0(sizeof(SortCoordinate *) * (descr->nIndices + 1));
 
 	ctid = 0;
 
@@ -1742,7 +1743,6 @@ rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
 	 */
 	if (buildstate.btleader)
 	{
-		coordinate = (SortCoordinate *) palloc0(sizeof(SortCoordinate *) * (descr->nIndices + 1));
 
 		for (i = 0; i < descr->nIndices + 1; i++)
 		{
@@ -1756,13 +1756,13 @@ rebuild_indices(OTable *old_o_table, OTableDescr *old_descr,
 	/* Begin serial/leader tuplesorts */
 	for (i = 0; i < descr->nIndices; i++)
 	{
-		sortstates[i] = tuplesort_begin_orioledb_index(descr->indices[i], work_mem, false, buildstate.btleader ? coordinate[i]: NULL);
+		sortstates[i] = tuplesort_begin_orioledb_index(descr->indices[i], work_mem, false, coordinate[i]);
 	}
 
 	btree_open_smgr(&descr->toast->desc);
 	sortstates[descr->nIndices] = tuplesort_begin_orioledb_toast(descr->toast,
 													descr->indices[0],
-													work_mem, false, buildstate.btleader ? coordinate[descr->nIndices]: NULL);
+													work_mem, false, coordinate[descr->nIndices]);
 
 	/* Fill spool using either serial or parallel heap scan */
 	if (!buildstate.btleader)
