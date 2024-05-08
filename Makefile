@@ -45,6 +45,7 @@ OBJS = src/btree/btree.o \
 	   src/catalog/sys_trees.o \
 	   src/checkpoint/checkpoint.o \
 	   src/orioledb.o \
+	   src/recovery/logical.o \
 	   src/recovery/recovery.o \
 	   src/recovery/wal.o \
 	   src/recovery/worker.o \
