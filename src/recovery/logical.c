@@ -253,6 +253,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			if (ix_type == oIndexPrimary &&
 				cur_oids.datoid == ctx->slot->data.database)
 			{
+				Assert(descr != NULL);
 				memcpy(tuple.fixedData, ptr, length);
 				tuple.tuple.data = tuple.fixedData;
 
