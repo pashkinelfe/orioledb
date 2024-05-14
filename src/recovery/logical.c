@@ -98,10 +98,10 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	int			sys_tree_num = -1;
 	ORelOids	cur_oids = {0, 0, 0};
 	OXid		oxid = InvalidOXid;
-	TransactionId logicalXid;
+	TransactionId logicalXid = InvalidTransactionId;
 	uint8		rec_type;
 	OffsetNumber length;
-	OIndexType	ix_type;
+	OIndexType	ix_type = oIndexInvalid;
 
 	while (ptr < endPtr)
 	{
