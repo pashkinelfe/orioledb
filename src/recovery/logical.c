@@ -93,10 +93,10 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	Pointer		endPtr = startPtr + XLogRecGetDataLen(record);
 	Pointer		ptr = startPtr;
 	OTableDescr *descr = NULL;
-	OIndexDescr *indexDescr = NULL;
+
+	/* OIndexDescr *indexDescr = NULL; */
 	int			sys_tree_num = -1;
-	ORelOids	cur_oids = {0, 0, 0},
-			   *treeOids;
+	ORelOids	cur_oids = {0, 0, 0};
 	OXid		oxid = InvalidOXid;
 	TransactionId logicalXid;
 	uint8		rec_type;
@@ -165,20 +165,23 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			if (sys_tree_num > 0)
 			{
 				descr = NULL;
-				indexDescr = NULL;
+				/* indexDescr = NULL; */
 				Assert(sys_tree_get_storage_type(sys_tree_num) == BTreeStoragePersistence);
 			}
 			else if (ix_type == oIndexInvalid)
 			{
 				descr = o_fetch_table_descr(cur_oids);
-				indexDescr = descr ? GET_PRIMARY(descr) : NULL;
+				/* indexDescr = descr ? GET_PRIMARY(descr) : NULL; */
 			}
 			else
 			{
 				Assert(ix_type == oIndexToast);
 				descr = NULL;
-				indexDescr = o_fetch_index_descr(cur_oids, ix_type,
-												 false, NULL);
+
+				/*
+				 * indexDescr = o_fetch_index_descr(cur_oids, ix_type, false,
+				 * NULL);
+				 */
 			}
 		}
 		else if (rec_type == WAL_REC_O_TABLES_META_LOCK)
