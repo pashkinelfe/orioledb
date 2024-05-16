@@ -1441,6 +1441,7 @@ start_autonomous_transaction(OAutonomousTxState *state)
 	state->oxid = get_current_oxid();
 	state->logicalXid = get_current_logical_xid();
 	state->has_retained_undo_location = have_retained_undo_location();
+	state->local_wal_has_material_changes = get_local_wal_has_material_changes();
 
 	if (!local_wal_is_empty())
 		flush_local_wal(false);
@@ -1470,6 +1471,7 @@ abort_autonomous_transaction(OAutonomousTxState *state)
 	GET_CUR_PROCDATA()->autonomousNestingLevel--;
 	set_current_oxid(state->oxid);
 	set_current_logical_xid(state->logicalXid);
+	set_local_wal_has_material_changes(state->local_wal_has_material_changes);
 }
 
 void
@@ -1499,6 +1501,7 @@ finish_autonomous_transaction(OAutonomousTxState *state)
 	GET_CUR_PROCDATA()->autonomousNestingLevel--;
 	set_current_oxid(state->oxid);
 	set_current_logical_xid(state->logicalXid);
+	set_local_wal_has_material_changes(state->local_wal_has_material_changes);
 }
 
 void

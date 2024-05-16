@@ -24,8 +24,10 @@
 #include "tableam/descr.h"
 #include "tuple/slot.h"
 
+#include "catalog/pg_tablespace.h"
 #include "replication/origin.h"
 #include "replication/reorderbuffer.h"
+#include "replication/snapbuild.h"
 
 static void
 tts_copy_identity(TupleTableSlot *srcSlot, TupleTableSlot *dstSlot,
@@ -83,7 +85,7 @@ record_buffer_tuple(ReorderBuffer *reorder, TupleTableSlot *slot)
 }
 
 /*
- * Handle rmgr HEAP_ID records for LogicalDecodingProcessRecord().
+ * Handle OrioleDB records for LogicalDecodingProcessRecord().
  */
 void
 orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
@@ -122,25 +124,38 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		else if (rec_type == WAL_REC_COMMIT || rec_type == WAL_REC_ROLLBACK)
 		{
 			OXid		xmin;
+			Snapshot	snap = SnapBuildGetOrBuildSnapshot(ctx->snapshot_builder);
 
 			memcpy(&xmin, ptr, sizeof(xmin));
+			ptr += sizeof(xmin);
 
-			oxid = InvalidOXid;
-			logicalXid = InvalidTransactionId;
+			ReorderBufferSetBaseSnapshot(ctx->reorder, logicalXid,
+										 buf->origptr + (ptr - startPtr),
+										 snap);
+			snap->active_count++;
 
 			ReorderBufferCommit(ctx->reorder, logicalXid, buf->origptr, buf->endptr,
 								0, InvalidRepOriginId, buf->origptr + (ptr - startPtr));
 			UpdateDecodingStats(ctx);
+
+			oxid = InvalidOXid;
+			logicalXid = InvalidTransactionId;
 		}
 		else if (rec_type == WAL_REC_JOINT_COMMIT)
 		{
 			TransactionId xid;
 			OXid		xmin;
+			Snapshot	snap = SnapBuildGetOrBuildSnapshot(ctx->snapshot_builder);
 
 			memcpy(&xid, ptr, sizeof(xid));
 			ptr += sizeof(xid);
 			memcpy(&xmin, ptr, sizeof(xmin));
 			ptr += sizeof(xmin);
+
+			ReorderBufferSetBaseSnapshot(ctx->reorder, logicalXid,
+										 buf->origptr + (ptr - startPtr),
+										 snap);
+			snap->active_count++;
 
 			ReorderBufferCommit(ctx->reorder, logicalXid, buf->origptr, buf->endptr,
 								0, InvalidRepOriginId, buf->origptr + (ptr - startPtr));
@@ -250,7 +265,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			memcpy(&length, ptr, sizeof(OffsetNumber));
 			ptr += sizeof(OffsetNumber);
 
-			if (ix_type == oIndexPrimary &&
+			if (ix_type == oIndexInvalid &&
 				cur_oids.datoid == ctx->slot->data.database)
 			{
 				Assert(descr != NULL);
@@ -260,7 +275,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				if (rec_type == WAL_REC_INSERT)
 				{
 					tts_orioledb_store_tuple(descr->newTuple, tuple.tuple,
-											 descr, COMMITSEQNO_FROZEN,
+											 descr, COMMITSEQNO_INPROGRESS,
 											 PrimaryIndexNumber, false,
 											 NULL);
 
@@ -268,6 +283,9 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 					change->action = REORDER_BUFFER_CHANGE_INSERT;
 					change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, descr->newTuple);
 					change->data.tp.clear_toast_afterwards = true;
+					change->data.tp.rlocator.spcOid = DEFAULTTABLESPACE_OID;
+					change->data.tp.rlocator.dbOid = cur_oids.datoid;
+					change->data.tp.rlocator.relNumber = cur_oids.relnode;
 
 					ReorderBufferQueueChange(ctx->reorder, logicalXid,
 											 buf->origptr + (ptr - startPtr),
@@ -277,7 +295,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				else if (rec_type == WAL_REC_UPDATE)
 				{
 					tts_orioledb_store_tuple(descr->newTuple, tuple.tuple,
-											 descr, COMMITSEQNO_FROZEN,
+											 descr, COMMITSEQNO_INPROGRESS,
 											 PrimaryIndexNumber, false,
 											 NULL);
 					tts_copy_identity(descr->newTuple, descr->oldTuple,
@@ -288,6 +306,9 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 					change->data.tp.oldtuple = record_buffer_tuple(ctx->reorder, descr->oldTuple);
 					change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, descr->newTuple);
 					change->data.tp.clear_toast_afterwards = true;
+					change->data.tp.rlocator.spcOid = DEFAULTTABLESPACE_OID;
+					change->data.tp.rlocator.dbOid = cur_oids.datoid;
+					change->data.tp.rlocator.relNumber = cur_oids.relnode;
 
 					ReorderBufferQueueChange(ctx->reorder, logicalXid,
 											 buf->origptr + (ptr - startPtr),
@@ -298,7 +319,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				else if (rec_type == WAL_REC_DELETE)
 				{
 					tts_orioledb_store_non_leaf_tuple(descr->oldTuple, tuple.tuple,
-													  descr, COMMITSEQNO_FROZEN,
+													  descr, COMMITSEQNO_INPROGRESS,
 													  PrimaryIndexNumber, false,
 													  NULL);
 
@@ -306,6 +327,9 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 					change->action = REORDER_BUFFER_CHANGE_DELETE;
 					change->data.tp.oldtuple = record_buffer_tuple(ctx->reorder, descr->oldTuple);
 					change->data.tp.clear_toast_afterwards = true;
+					change->data.tp.rlocator.spcOid = DEFAULTTABLESPACE_OID;
+					change->data.tp.rlocator.dbOid = cur_oids.datoid;
+					change->data.tp.rlocator.relNumber = cur_oids.relnode;
 
 					ReorderBufferQueueChange(ctx->reorder, logicalXid,
 											 buf->origptr + (ptr - startPtr),

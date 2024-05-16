@@ -127,5 +127,7 @@ extern void o_wal_update(BTreeDescr *desc, OTuple tuple);
 extern void o_wal_delete(BTreeDescr *desc, OTuple tuple);
 extern void o_wal_delete_key(BTreeDescr *desc, OTuple key);
 extern void add_truncate_wal_record(ORelOids oids);
+extern bool get_local_wal_has_material_changes(void);
+extern void set_local_wal_has_material_changes(bool value);
 
 #endif							/* __WAL_H__ */
