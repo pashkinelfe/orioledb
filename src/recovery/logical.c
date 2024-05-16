@@ -124,7 +124,11 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		else if (rec_type == WAL_REC_COMMIT || rec_type == WAL_REC_ROLLBACK)
 		{
 			OXid		xmin;
+#if PG_VERSION_NUM >= 160000
 			Snapshot	snap = SnapBuildGetOrBuildSnapshot(ctx->snapshot_builder);
+#else
+			Snapshot	snap = SnapBuildGetOrBuildSnapshot(ctx->snapshot_builder, InvalidTransactionId);
+#endif
 
 			memcpy(&xmin, ptr, sizeof(xmin));
 			ptr += sizeof(xmin);
@@ -145,7 +149,11 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		{
 			TransactionId xid;
 			OXid		xmin;
+#if PG_VERSION_NUM >= 160000
 			Snapshot	snap = SnapBuildGetOrBuildSnapshot(ctx->snapshot_builder);
+#else
+			Snapshot	snap = SnapBuildGetOrBuildSnapshot(ctx->snapshot_builder, InvalidTransactionId);
+#endif
 
 			memcpy(&xid, ptr, sizeof(xid));
 			ptr += sizeof(xid);
@@ -283,9 +291,15 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 					change->action = REORDER_BUFFER_CHANGE_INSERT;
 					change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, descr->newTuple);
 					change->data.tp.clear_toast_afterwards = true;
+#if PG_VERSION_NUM >= 160000
 					change->data.tp.rlocator.spcOid = DEFAULTTABLESPACE_OID;
 					change->data.tp.rlocator.dbOid = cur_oids.datoid;
 					change->data.tp.rlocator.relNumber = cur_oids.relnode;
+#else
+					change->data.tp.relnode.spcNode = DEFAULTTABLESPACE_OID;
+					change->data.tp.relnode.dbNode = cur_oids.datoid;
+					change->data.tp.relnode.relNode = cur_oids.relnode;
+#endif
 
 					ReorderBufferQueueChange(ctx->reorder, logicalXid,
 											 buf->origptr + (ptr - startPtr),
@@ -306,9 +320,15 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 					change->data.tp.oldtuple = record_buffer_tuple(ctx->reorder, descr->oldTuple);
 					change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, descr->newTuple);
 					change->data.tp.clear_toast_afterwards = true;
+#if PG_VERSION_NUM >= 160000
 					change->data.tp.rlocator.spcOid = DEFAULTTABLESPACE_OID;
 					change->data.tp.rlocator.dbOid = cur_oids.datoid;
 					change->data.tp.rlocator.relNumber = cur_oids.relnode;
+#else
+					change->data.tp.relnode.spcNode = DEFAULTTABLESPACE_OID;
+					change->data.tp.relnode.dbNode = cur_oids.datoid;
+					change->data.tp.relnode.relNode = cur_oids.relnode;
+#endif
 
 					ReorderBufferQueueChange(ctx->reorder, logicalXid,
 											 buf->origptr + (ptr - startPtr),
@@ -327,9 +347,15 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 					change->action = REORDER_BUFFER_CHANGE_DELETE;
 					change->data.tp.oldtuple = record_buffer_tuple(ctx->reorder, descr->oldTuple);
 					change->data.tp.clear_toast_afterwards = true;
+#if PG_VERSION_NUM >= 160000
 					change->data.tp.rlocator.spcOid = DEFAULTTABLESPACE_OID;
 					change->data.tp.rlocator.dbOid = cur_oids.datoid;
 					change->data.tp.rlocator.relNumber = cur_oids.relnode;
+#else
+					change->data.tp.relnode.spcNode = DEFAULTTABLESPACE_OID;
+					change->data.tp.relnode.dbNode = cur_oids.datoid;
+					change->data.tp.relnode.relNode = cur_oids.relnode;
+#endif
 
 					ReorderBufferQueueChange(ctx->reorder, logicalXid,
 											 buf->origptr + (ptr - startPtr),
