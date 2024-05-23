@@ -81,8 +81,10 @@ o_tuple_next_field_offset(OTupleReaderState *state, Form_pg_attribute att)
 		}
 		else
 		{
+//			elog(INFO, "attnum: %u, p2 %u, offset %u", state->attnum, state->tp, state->off);
 			state->off = att_align_pointer(state->off, att->attalign, -1,
 										   state->tp + state->off);
+//			elog(INFO, "tp3 %u, offset2 %u", state->tp, state->off);
 			state->slow = true;
 		}
 	}
@@ -102,6 +104,7 @@ o_tuple_next_field_offset(OTupleReaderState *state, Form_pg_attribute att)
 	}
 	else
 	{
+//		elog(INFO, "NON-TOAST PTR, %u", (uint32) (state->tp + state->off));
 		state->off = att_addlength_pointer(state->off,
 										   att->attlen,
 										   state->tp + state->off);
@@ -120,7 +123,7 @@ o_tuple_read_next_field(OTupleReaderState *state, bool *isnull)
 {
 	Form_pg_attribute att;
 	Datum		result;
-	uint32		off;
+	uint32		off = 0;
 
 	if (state->attnum >= state->natts)
 	{
@@ -153,8 +156,9 @@ o_tuple_read_next_field(OTupleReaderState *state, bool *isnull)
 	}
 
 	*isnull = false;
+//	elog(INFO, "attnum %u, tp1 %u, offset %u, off %u", state->attnum, state->tp, state->off, off);
 	off = o_tuple_next_field_offset(state, att);
-
+//	elog(INFO, "tp4 %u, offset %u, off %u", state->tp, state->off, off);
 	return fetchatt(att, state->tp + off);
 }
 

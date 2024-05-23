@@ -419,6 +419,7 @@ generic_toast_insert_optional_wal(ToastAPI *api, void *key, Pointer data,
 			length = max_length;
 		}
 
+//		elog(INFO, "generic_toast_insert_optional_wal: length %u", length);
 		tup = api->createTuple(key, data, offset, length, arg);
 
 		inserted = o_btree_modify(desc, BTreeOperationInsert,
@@ -434,7 +435,7 @@ generic_toast_insert_optional_wal(ToastAPI *api, void *key, Pointer data,
 		}
 
 		if (desc->storageType == BTreeStoragePersistence && wal)
-			add_modify_wal_record(WAL_REC_INSERT, desc, tup,
+			add_modify_wal_record((WAL_REC_INSERT | WAL_REC_TOAST), desc, tup,
 								  o_btree_len(desc, tup, OTupleLength));
 
 		pfree(tup.data);
@@ -551,6 +552,7 @@ generic_toast_update_optional_wal(ToastAPI *api, void *key, Pointer data,
 			length = max_length;
 		}
 
+//		elog(INFO, "generic_toast_update_optional_wal: length %u", length);
 		tup = api->createTuple(key, data, offset, length, arg);
 
 		result = o_btree_modify(desc, BTreeOperationInsert,
@@ -571,7 +573,7 @@ generic_toast_update_optional_wal(ToastAPI *api, void *key, Pointer data,
 			uint8		rec_type;
 
 			rec_type = (result == OBTreeModifyResultUpdated) ? WAL_REC_UPDATE :
-				WAL_REC_INSERT;
+				(WAL_REC_INSERT | WAL_REC_TOAST);
 			add_modify_wal_record(rec_type, desc, tup,
 								  o_btree_len(desc, tup, OTupleLength));
 		}
