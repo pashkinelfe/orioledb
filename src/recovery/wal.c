@@ -59,7 +59,7 @@ add_modify_wal_record(uint8 rec_type, BTreeDescr *desc,
 	}
 
 	Assert(!is_recovery_process());
-	Assert(rec_type == WAL_REC_INSERT || rec_type == WAL_REC_UPDATE || rec_type == WAL_REC_DELETE);
+	Assert((rec_type & 0x0f) == WAL_REC_INSERT || (rec_type & 0x0f) == WAL_REC_UPDATE || (rec_type & 0x0f) == WAL_REC_DELETE);
 
 	required_length = sizeof(WALRecModify) + length;
 
@@ -74,6 +74,7 @@ add_modify_wal_record(uint8 rec_type, BTreeDescr *desc,
 	if (!ORelOidsIsEqual(local_oids, oids) || type != local_type)
 		add_rel_wal_record(oids, type);
 
+	elog(INFO, "length_put: %d", length);
 	add_local_modify(rec_type, tuple, length);
 }
 
