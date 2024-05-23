@@ -102,13 +102,15 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	OXid		oxid = InvalidOXid;
 	TransactionId logicalXid = InvalidTransactionId;
 	uint8		rec_type;
+	uint8		rec_flags;
 	OffsetNumber length;
 	OIndexType	ix_type = oIndexInvalid;
 
 	while (ptr < endPtr)
 	{
 
-		rec_type = *ptr;
+		rec_type = *ptr & 0x0F;
+		rec_flags = *ptr & 0xF0;
 		ptr++;
 
 		if (rec_type == WAL_REC_XID)
@@ -303,7 +305,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 					ReorderBufferQueueChange(ctx->reorder, logicalXid,
 											 buf->origptr + (ptr - startPtr),
-											 change, false);
+											 change, (rec_flags & WAL_REC_TOAST));
 
 				}
 				else if (rec_type == WAL_REC_UPDATE)
