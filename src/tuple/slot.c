@@ -734,6 +734,7 @@ tts_orioledb_init_reader(TupleTableSlot *slot)
 	OTableSlot *oslot = (OTableSlot *) slot;
 	OIndexDescr *idx = oslot->descr->indices[oslot->ixnum];
 
+//	elog(INFO, "Read attr %d, toast: %s", );
 	if (oslot->leafTuple)
 		o_tuple_init_reader(&oslot->state, oslot->tuple,
 							idx->leafTupdesc, &idx->leafSpec);

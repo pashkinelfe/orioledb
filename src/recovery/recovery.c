@@ -2310,7 +2310,7 @@ replay_container(Pointer startPtr, Pointer endPtr,
 	while (ptr < endPtr)
 	{
 		xlogPtr = xlogRecPtr + (ptr - startPtr);
-		rec_type = *ptr;
+		rec_type = (*ptr) & 0x0F;
 		ptr++;
 
 		if (rec_type == WAL_REC_XID)

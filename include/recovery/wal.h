@@ -30,6 +30,8 @@
 #define WAL_REC_ROLLBACK_TO_SAVEPOINT (11)
 #define WAL_REC_JOINT_COMMIT (12)
 #define WAL_REC_TRUNCATE	(13)
+/* Flags */
+#define WAL_REC_TOAST 			(1<<4)
 
 /* Constants for commitInProgressXlogLocation */
 #define OWalTmpCommitPos			(0)
