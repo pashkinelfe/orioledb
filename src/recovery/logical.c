@@ -113,6 +113,8 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		rec_flags = *ptr & 0xF0;
 		ptr++;
 
+		elog(INFO, "WAL_REC: %d", rec_type);
+
 		if (rec_type == WAL_REC_XID)
 		{
 			memcpy(&oxid, ptr, sizeof(oxid));
@@ -197,11 +199,27 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			{
 				descr = o_fetch_table_descr(cur_oids);
 				/* indexDescr = descr ? GET_PRIMARY(descr) : NULL; */
+				{
+					volatile bool c = 1;
+					while (c)
+					{
+						pg_usleep(1000L);
+					}
+				}
+
 			}
 			else
 			{
 				Assert(ix_type == oIndexToast);
-				descr = NULL;
+				descr = o_fetch_table_descr(cur_oids);
+
+				{
+					volatile bool b = 1;
+					while (b)
+					{
+						pg_usleep(1000L);
+					}
+				}
 
 				/*
 				 * indexDescr = o_fetch_index_descr(cur_oids, ix_type, false,
@@ -275,6 +293,16 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			memcpy(&length, ptr, sizeof(OffsetNumber));
 			ptr += sizeof(OffsetNumber);
 
+			descr = o_fetch_table_descr(cur_oids);
+			if (rec_flags & WAL_REC_TOAST)
+			{
+				volatile bool a = 1;
+				while (a)
+				{
+					pg_usleep(1000L);
+				}
+
+			}
 			if (ix_type == oIndexInvalid &&
 				cur_oids.datoid == ctx->slot->data.database)
 			{
