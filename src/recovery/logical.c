@@ -105,6 +105,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	uint8		rec_flags;
 	OffsetNumber length;
 	OIndexType	ix_type = oIndexInvalid;
+	TupleDescData 	*toast_tupDesc;
 
 	while (ptr < endPtr)
 	{
@@ -199,27 +200,23 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			{
 				descr = o_fetch_table_descr(cur_oids);
 				/* indexDescr = descr ? GET_PRIMARY(descr) : NULL; */
-				{
-					volatile bool c = 1;
-					while (c)
-					{
-						pg_usleep(1000L);
-					}
-				}
-
 			}
 			else
 			{
-				Assert(ix_type == oIndexToast);
-				descr = o_fetch_table_descr(cur_oids);
+				OIndexDescr *indexDescr;
 
-				{
-					volatile bool b = 1;
-					while (b)
-					{
-						pg_usleep(1000L);
-					}
-				}
+				Assert(ix_type == oIndexToast);
+				indexDescr = o_fetch_index_descr(cur_oids, ix_type, false, NULL);
+				descr = o_fetch_table_descr(indexDescr->tableOids);
+				toast_tupDesc = descr->toast->leafTupdesc;
+
+//				{
+//					volatile bool b = 1;
+//					while (b)
+//					{
+//						pg_usleep(1000L);
+//					}
+//				}
 
 				/*
 				 * indexDescr = o_fetch_index_descr(cur_oids, ix_type, false,
@@ -282,6 +279,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 		{
 			OFixedTuple tuple;
 			ReorderBufferChange *change;
+			TupleTableSlot *toast_slot = NULL;
 
 			Assert(rec_type == WAL_REC_INSERT || rec_type == WAL_REC_UPDATE || rec_type == WAL_REC_DELETE);
 
@@ -293,17 +291,10 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			memcpy(&length, ptr, sizeof(OffsetNumber));
 			ptr += sizeof(OffsetNumber);
 
-			descr = o_fetch_table_descr(cur_oids);
 			if (rec_flags & WAL_REC_TOAST)
-			{
-				volatile bool a = 1;
-				while (a)
-				{
-					pg_usleep(1000L);
-				}
+				Assert(ix_type == oIndexToast);
 
-			}
-			if (ix_type == oIndexInvalid &&
+			if ((ix_type == oIndexInvalid || ix_type == oIndexToast) &&
 				cur_oids.datoid == ctx->slot->data.database)
 			{
 				Assert(descr != NULL);
@@ -312,14 +303,37 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 				if (rec_type == WAL_REC_INSERT)
 				{
-					tts_orioledb_store_tuple(descr->newTuple, tuple.tuple,
+					TupleTableSlot *slot = (rec_flags & WAL_REC_TOAST) ?
+					       			MakeSingleTupleTableSlot(toast_tupDesc, &TTSOpsOrioleDB):
+							       	descr->newTuple;
+//					int 		ixnum =  (rec_flags & WAL_REC_TOAST) ? TOASTIndexNumber : PrimaryIndexNumber;
+					int 		ixnum = PrimaryIndexNumber;
+
+					tts_orioledb_store_tuple(slot, tuple.tuple,
 											 descr, COMMITSEQNO_INPROGRESS,
-											 PrimaryIndexNumber, false,
+											 ixnum, false,
 											 NULL);
+
+					if(rec_flags & WAL_REC_TOAST)
+                                        {
+						elog(INFO, "length_get: %d", length);
+
+//					slot_gettallattrs...
+//				        attnum1 = DatumGetInt16(o_fastgetattr(tuple.tuple, pkAttnum + ATTN_POS, toastd->nonLeafTupdesc, &toastd->nonLeafSpec, &null));
+  //              Assert(!null);
+    //            offset1 = DatumGetInt32(o_fastgetattr(pk1, pkAttnum + OFFSET_POS, toastd->nonLeafTupdesc, &toastd->nonLeafSpec, &null));
+      //          Assert(!null);
+
+					volatile bool a = 1;
+                                        while (a)
+                                                {
+                                                pg_usleep(1000L);
+                                                }
+                                        }
 
 					change = ReorderBufferGetChange(ctx->reorder);
 					change->action = REORDER_BUFFER_CHANGE_INSERT;
-					change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, descr->newTuple);
+					change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, slot);
 					change->data.tp.clear_toast_afterwards = true;
 #if PG_VERSION_NUM >= 160000
 					change->data.tp.rlocator.spcOid = DEFAULTTABLESPACE_OID;

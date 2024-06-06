@@ -74,6 +74,7 @@ add_modify_wal_record(uint8 rec_type, BTreeDescr *desc,
 	if (!ORelOidsIsEqual(local_oids, oids) || type != local_type)
 		add_rel_wal_record(oids, type);
 
+	elog(INFO, "length_put: %d", length);
 	add_local_modify(rec_type, tuple, length);
 }
 
