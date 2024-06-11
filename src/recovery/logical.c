@@ -303,34 +303,52 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 				if (rec_type == WAL_REC_INSERT)
 				{
-					TupleTableSlot *slot = (rec_flags & WAL_REC_TOAST) ?
-					       			MakeSingleTupleTableSlot(toast_tupDesc, &TTSOpsOrioleDB):
-							       	descr->newTuple;
+					TupleTableSlot *slot;
+					if (!(rec_flags & WAL_REC_TOAST))
+					{
+						int 		ixnum = PrimaryIndexNumber;
+						slot = descr->newTuple;					
+//					TupleTableSlot *slot = (rec_flags & WAL_REC_TOAST) ?
+//					       			MakeSingleTupleTableSlot(toast_tupDesc, &TTSOpsOrioleDB):
+//							       	descr->newTuple;
 //					int 		ixnum =  (rec_flags & WAL_REC_TOAST) ? TOASTIndexNumber : PrimaryIndexNumber;
-					int 		ixnum = PrimaryIndexNumber;
-
-					tts_orioledb_store_tuple(slot, tuple.tuple,
+	
+						tts_orioledb_store_tuple(slot, tuple.tuple,
 											 descr, COMMITSEQNO_INPROGRESS,
 											 ixnum, false,
 											 NULL);
-
-					if(rec_flags & WAL_REC_TOAST)
+					}
+					else
                                         {
+						uint32 id;
+						uint16 attnum;
+						uint32 offset;
+						bytea *data;
 						elog(INFO, "length_get: %d", length);
 
+//						slot->tts_ops->materialize(slot);
+						//tts_orioledb_materialize(slot);
+						//slot_getallattrs(slot);	
 //					slot_gettallattrs...
 //				        attnum1 = DatumGetInt16(o_fastgetattr(tuple.tuple, pkAttnum + ATTN_POS, toastd->nonLeafTupdesc, &toastd->nonLeafSpec, &null));
   //              Assert(!null);
     //            offset1 = DatumGetInt32(o_fastgetattr(pk1, pkAttnum + OFFSET_POS, toastd->nonLeafTupdesc, &toastd->nonLeafSpec, &null));
       //          Assert(!null);
-
-					volatile bool a = 1;
-                                        while (a)
-                                                {
-                                                pg_usleep(1000L);
-                                                }
+						id = DatumGetUInt32(PointerGetDatum(o_fastgetattr_ptr(tuple.tuple, 1, toast_tupDesc, &descr->toast->leafSpec)));	
+						attnum = DatumGetUInt16(PointerGetDatum(o_fastgetattr_ptr(tuple.tuple, 2, toast_tupDesc, &descr->toast->leafSpec)));
+						offset = DatumGetUInt32(PointerGetDatum(o_fastgetattr_ptr(tuple.tuple, 3, toast_tupDesc, &descr->toast->leafSpec)));
+						data = DatumGetByteaPP(PointerGetDatum(o_fastgetattr_ptr(tuple.tuple, 4, toast_tupDesc, &descr->toast->leafSpec)));
+						elog(INFO, "id: %u, attnum: %u, offset: %u", id, attnum, offset);
+//					volatile bool a = 1;
+//                                      while (a)
+//                                                {
+//                                                pg_usleep(1000L);
+//                                                }
                                         }
 
+
+					if (!(rec_flags & WAL_REC_TOAST))
+					{
 					change = ReorderBufferGetChange(ctx->reorder);
 					change->action = REORDER_BUFFER_CHANGE_INSERT;
 					change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, slot);
@@ -349,6 +367,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 											 buf->origptr + (ptr - startPtr),
 											 change, (rec_flags & WAL_REC_TOAST));
 
+					}
 				}
 				else if (rec_type == WAL_REC_UPDATE)
 				{
