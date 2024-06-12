@@ -354,7 +354,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 						uint32 id;
 						uint16 attnum;
 						uint32 offset;
-						bytea *chunk_data;
+						Datum  chunk_data;
 						HeapTuple toasttup;
 						Datum  t_values[3];
 						bool   t_isnull[3];
@@ -364,15 +364,14 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 						id = *((uint32*) o_fastgetattr_ptr(tuple.tuple, 1, toast_tupDesc, &descr->toast->leafSpec));
 						attnum = *((uint16*) o_fastgetattr_ptr(tuple.tuple, 2, toast_tupDesc, &descr->toast->leafSpec));
 						offset = *((uint32*) o_fastgetattr_ptr(tuple.tuple, 3, toast_tupDesc, &descr->toast->leafSpec));
-						chunk_data = DatumGetByteaPP(PointerGetDatum(o_fastgetattr_ptr(tuple.tuple, 4, toast_tupDesc, &descr->toast->leafSpec)));
-						chunk_size = VARSIZE(chunk_data);
+						chunk_data = PointerGetDatum(o_fastgetattr_ptr(tuple.tuple, 4, toast_tupDesc, &descr->toast->leafSpec));
 
 						elog(INFO, "id: %u, attnum: %u, offset: %u, length_get: %u, chunk_seq: %u, chunk_varsize: %u", id, attnum, offset, length, chunk_seq[attnum], VARSIZE(chunk_data));
  
 //						SET_VARSIZE(&chunk_data, chunk_size + VARHDRSZ);
 						t_values[0] = ObjectIdGetDatum(attnum + 10000);
 						t_values[1] = Int32GetDatum(chunk_seq[attnum]);
-						t_values[2] = PointerGetDatum(chunk_data);
+						t_values[2] = chunk_data;
 						t_isnull[0] = false;
 						t_isnull[1] = false;
 						t_isnull[2] = false;
