@@ -118,8 +118,8 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	uint8		rec_flags;
 	OffsetNumber length;
 	OIndexType	ix_type = oIndexInvalid;
-	TupleDescData 	*toast_tupDesc;
-	TupleDescData   *heaptoast_tupDesc;
+	TupleDescData 	*o_toast_tupDesc;
+	TupleDescData   *heap_toast_tupDesc;
 	uint16 		*chunk_seq;
 
 	while (ptr < endPtr)
@@ -131,9 +131,9 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 		elog(INFO, "WAL_REC: %s %s", rec_type == WAL_REC_XID ? "XID" :
 				rec_type == WAL_REC_COMMIT ? "COMMIT" :
-			       	rec_type == WAL_REC_ROLLBACK ? "ROLLBACK" :
-		   		rec_type == WAL_REC_JOINT_COMMIT ? "JOINT COMMIT" :
-		   		rec_type == WAL_REC_RELATION ? "RELATION" :
+				rec_type == WAL_REC_ROLLBACK ? "ROLLBACK" :
+				rec_type == WAL_REC_JOINT_COMMIT ? "JOINT COMMIT" :
+				rec_type == WAL_REC_RELATION ? "RELATION" :
 				rec_type == WAL_REC_O_TABLES_META_LOCK ? "META LOCK" :
 				rec_type == WAL_REC_O_TABLES_META_UNLOCK ? "META_UNLOCK" :
 				rec_type == WAL_REC_TRUNCATE ? "TRUNCATE" :
@@ -142,7 +142,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				rec_type == WAL_REC_INSERT ? "INSERT" :
 				rec_type == WAL_REC_UPDATE ? "UPDATE" :
 				rec_type == WAL_REC_DELETE ? "DELETE" : "_UNKNOWN"
-				, 
+				,
 				(rec_flags & WAL_REC_TOAST) ? "TOAST" : "");
 
 		if (rec_type == WAL_REC_XID)
@@ -238,19 +238,19 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				indexDescr = o_fetch_index_descr(cur_oids, ix_type, false, NULL);
 				descr = o_fetch_table_descr(indexDescr->tableOids);
 				elog (INFO, "table natts: %u", descr->tupdesc->natts);
-				toast_tupDesc = descr->toast->leafTupdesc;
-				heaptoast_tupDesc = CreateTemplateTupleDesc(3);
-				TupleDescInitEntry(heaptoast_tupDesc, (AttrNumber) 1, "chunk_id", OIDOID, -1, 0);
-				TupleDescInitEntry(heaptoast_tupDesc, (AttrNumber) 2, "chunk_seq", INT4OID, -1, 0);
-				TupleDescInitEntry(heaptoast_tupDesc, (AttrNumber) 3, "chunk_data", BYTEAOID, -1, 0);
+				o_toast_tupDesc = descr->toast->leafTupdesc;
+				heap_toast_tupDesc = CreateTemplateTupleDesc(3);
+				TupleDescInitEntry(heap_toast_tupDesc, (AttrNumber) 1, "chunk_id", OIDOID, -1, 0);
+				TupleDescInitEntry(heap_toast_tupDesc, (AttrNumber) 2, "chunk_seq", INT4OID, -1, 0);
+				TupleDescInitEntry(heap_toast_tupDesc, (AttrNumber) 3, "chunk_data", BYTEAOID, -1, 0);
 				/* Ensure that the toast table doesn't itself get toasted */
-				TupleDescAttr(heaptoast_tupDesc, 0)->attstorage = TYPSTORAGE_PLAIN;
-				TupleDescAttr(heaptoast_tupDesc, 1)->attstorage = TYPSTORAGE_PLAIN;
-				TupleDescAttr(heaptoast_tupDesc, 2)->attstorage = TYPSTORAGE_PLAIN;
+				TupleDescAttr(heap_toast_tupDesc, 0)->attstorage = TYPSTORAGE_PLAIN;
+				TupleDescAttr(heap_toast_tupDesc, 1)->attstorage = TYPSTORAGE_PLAIN;
+				TupleDescAttr(heap_toast_tupDesc, 2)->attstorage = TYPSTORAGE_PLAIN;
 				/* Toast field should not be compressed */
-				TupleDescAttr(heaptoast_tupDesc, 0)->attcompression = InvalidCompressionMethod;
-				TupleDescAttr(heaptoast_tupDesc, 1)->attcompression = InvalidCompressionMethod;
-				TupleDescAttr(heaptoast_tupDesc, 2)->attcompression = InvalidCompressionMethod;
+				TupleDescAttr(heap_toast_tupDesc, 0)->attcompression = InvalidCompressionMethod;
+				TupleDescAttr(heap_toast_tupDesc, 1)->attcompression = InvalidCompressionMethod;
+				TupleDescAttr(heap_toast_tupDesc, 2)->attcompression = InvalidCompressionMethod;
 				chunk_seq = palloc0 (sizeof(uint32) * descr->tupdesc->natts);
 
 				/*
@@ -361,13 +361,12 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 						Assert(ix_type == oIndexToast);
 
-						id = *((uint32*) o_fastgetattr_ptr(tuple.tuple, 1, toast_tupDesc, &descr->toast->leafSpec));
-						attnum = *((uint16*) o_fastgetattr_ptr(tuple.tuple, 2, toast_tupDesc, &descr->toast->leafSpec));
-						offset = *((uint32*) o_fastgetattr_ptr(tuple.tuple, 3, toast_tupDesc, &descr->toast->leafSpec));
-						chunk_data = PointerGetDatum(o_fastgetattr_ptr(tuple.tuple, 4, toast_tupDesc, &descr->toast->leafSpec));
+						id = *((uint32*) o_fastgetattr_ptr(tuple.tuple, 1, o_toast_tupDesc, &descr->toast->leafSpec));
+						attnum = *((uint16*) o_fastgetattr_ptr(tuple.tuple, 2, o_toast_tupDesc, &descr->toast->leafSpec));
+						offset = *((uint32*) o_fastgetattr_ptr(tuple.tuple, 3, o_toast_tupDesc, &descr->toast->leafSpec));
+						chunk_data = PointerGetDatum(o_fastgetattr_ptr(tuple.tuple, 4, o_toast_tupDesc, &descr->toast->leafSpec));
 
-						elog(INFO, "id: %u, attnum: %u, offset: %u, length_get: %u, chunk_seq: %u, chunk_varsize: %u", id, attnum, offset, length, chunk_seq[attnum], VARSIZE(chunk_data));
- 
+						elog(INFO, "id: %u, attnum: %u, offset: %u, length_get: %u, chunk_seq: %u, chunk_varsize: %u", id, attnum, offset, length, chunk_seq[attnum], VARSIZE(chunk_data)); 
 //						SET_VARSIZE(&chunk_data, chunk_size + VARHDRSZ);
 						t_values[0] = ObjectIdGetDatum(attnum + 10000);
 						t_values[1] = Int32GetDatum(chunk_seq[attnum]);
@@ -375,7 +374,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 						t_isnull[0] = false;
 						t_isnull[1] = false;
 						t_isnull[2] = false;
-						toasttup = heap_form_tuple(heaptoast_tupDesc, t_values, t_isnull);
+						toasttup = heap_form_tuple(heap_toast_tupDesc, t_values, t_isnull);
 						change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, toasttup);
 						change->data.tp.clear_toast_afterwards = false;
 
