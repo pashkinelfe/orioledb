@@ -108,8 +108,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	Pointer		endPtr = startPtr + XLogRecGetDataLen(record);
 	Pointer		ptr = startPtr;
 	OTableDescr *descr = NULL;
-
-	/* OIndexDescr *indexDescr = NULL; */
+	OIndexDescr *indexDescr = NULL;
 	int			sys_tree_num = -1;
 	ORelOids	cur_oids = {0, 0, 0};
 	OXid		oxid = InvalidOXid;
@@ -228,12 +227,11 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			else if (ix_type == oIndexInvalid)
 			{
 				descr = o_fetch_table_descr(cur_oids);
-				/* indexDescr = descr ? GET_PRIMARY(descr) : NULL; */
+				//indexDescr = o_fetch_index_descr(cur_oids, ix_type, false, NULL);
+				indexDescr = descr ? GET_PRIMARY(descr) : NULL; 
 			}
 			else
 			{
-				OIndexDescr *indexDescr;
-
 				Assert(ix_type == oIndexToast);
 				indexDescr = o_fetch_index_descr(cur_oids, ix_type, false, NULL);
 				descr = o_fetch_table_descr(indexDescr->tableOids);
@@ -380,23 +378,76 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 						heap_freetuple(toasttup);
 						chunk_seq[attnum]++;
-//						volatile bool a = 1;
-  //                                    while (a)
-    //                                            {
-      //                                          pg_usleep(1000L);
-        //                                        }
+	//					volatile bool a = 1;
+//                                      while (a)
+  //                                              {
+    //                                            pg_usleep(1000L);
+      //                                         }
                                         }
 					else
 					{
 						int 		ixnum = PrimaryIndexNumber;
 
 						Assert(ix_type != oIndexToast);
-						tts_orioledb_store_tuple(descr->newTuple, tuple.tuple,
+						/* Primary table contains TOASTed attributes */
+						if(descr->ntoastable > 0)
+						{
+							int 	     natts = descr->tupdesc->natts;
+							Datum       *old_values = palloc(natts*sizeof(Datum));
+							Datum	    *new_values = palloc(natts*sizeof(Datum));
+							bool 	    *isnull = palloc(natts*sizeof(bool));
+							int         ctid_off = indexDescr->primaryIsCtid ? 1 : 0;
+							OFixedTuple newtuple;
+
+							Assert(descr->toast);
+							for (int i = 0; i < natts; i++)
+							{
+								old_values[i] = o_fastgetattr(tuple.tuple, i + 1, descr->tupdesc, &indexDescr->leafSpec, &isnull[i]);
+								new_values[i] = old_values[i];
+								Assert(!isnull);
+							}
+						
+							/* Convert TOAST pointers */	
+							for (int i = 0; i < descr->ntoastable; i++)
+							{
+								int toast_attn = descr->toastable[i] - ctid_off;
+								OToastExternal ote;
+								varatt_external ve;
+
+								Assert(VARATT_IS_EXTERNAL_ORIOLEDB(old_values));
+								ote = VARDATA_EXTERNAL(old_values[toast_attn]);
+								ve.va_rawsize = ote.raw_size;
+								ve.va_extinfo = ote.raw_size - VARHDRSZ;
+								ve.va_toastrelid = descr->toast->oids->reloid; 
+								ve.va_valueid = ObjectIdGetDatum(toast_attn + 10000);
+								SET_VARTAG_EXTERNAL(new_values[toast_attn], VARTAG_ONDISK);
+								memcpy(VARDATA_EXTERNAL(new_values[toast_attn]), &ve, sizeof(varatt_external);
+							}
+							
+							newtuple.tuple = o_form_tuple(descr->tupdesc, &indexDescr->leafSpec,
+							       	 		o_tuple_get_version(tuple.tuple), new_values, isnull);
+						volatile bool a = 1;
+	                                        while (a)
+                                                {
+                                                pg_usleep(1000L);
+                                                }
+
+							tts_orioledb_store_tuple(descr->newTuple, newtuple.tuple,
 											 descr, COMMITSEQNO_INPROGRESS,
 											 ixnum, false,
 											 NULL);
+
+						}
+						else
+						{
+							tts_orioledb_store_tuple(descr->newTuple, tuple.tuple,
+											 descr, COMMITSEQNO_INPROGRESS,
+											 ixnum, false,
+											 NULL);
+						}
 						change->data.tp.newtuple = record_buffer_tuple_slot(ctx->reorder, descr->newTuple);
 						change->data.tp.clear_toast_afterwards = true;
+
 					}
 
 
