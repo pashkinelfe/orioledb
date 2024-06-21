@@ -403,7 +403,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 							Datum	    *new_values = palloc(natts*sizeof(Datum));
 							bool 	    *isnull = palloc(natts*sizeof(bool));
 							int         ctid_off = indexDescr->primaryIsCtid ? 1 : 0;
-							OFixedTuple newtuple;
+							OTuple 	    newtuple;
 
 							Assert(descr->toast);
 							for (int i = 0; i < natts; i++)
@@ -419,11 +419,12 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 								int toast_attn = descr->toastable[i] - ctid_off;
 								OToastExternal *ote;
 								varatt_external ve;
-								struct varlena *result = (struct varlena *) palloc0(TOAST_POINTER_SIZE);
+								char *result = palloc0(TOAST_POINTER_SIZE);
 
 								//VARATT_EXTERNAL_GET_POINTER(ote, old_values[toast_attn]);
 								//memcpy(&ote, VARDATA_EXTERNAL(DatumGetPointer(old_values[toast_attn])), O_TOAST_EXTERNAL_SZ); 
 								ote = (OToastExternal *) DatumGetPointer(old_values[toast_attn]);
+								
 								ve.va_rawsize = ote->raw_size + VARHDRSZ;
 								ve.va_extinfo = ote->raw_size;
 								ve.va_toastrelid = descr->toast->oids.reloid;
@@ -433,16 +434,20 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 								elog(INFO, "Old toast pointer: raw_size %d, toastrelid %d, valueid %d", ve.va_rawsize, ve.va_toastrelid, ve.va_valueid);
 								elog(INFO, "New toast pointer vartag: %d, varsize: %d, ", VARTAG_EXTERNAL(result), VARSIZE_EXTERNAL(result));
 								new_values[toast_attn] = PointerGetDatum(result);
+
+//						if(i==1){
 //						volatile bool a = 1;
-//	                                        while (a)
-  //                                              {
+//						while (a)
+  //                                             {
     //                                            pg_usleep(1000L);
       //                                          }
+	//					}
+
 							}
-							newtuple.tuple = o_form_tuple(descr->tupdesc, &indexDescr->leafSpec,
+							newtuple = o_form_tuple(descr->tupdesc, &indexDescr->leafSpec,
 									o_tuple_get_version(tuple.tuple), new_values, isnull);
 
-							tts_orioledb_store_tuple(descr->newTuple, newtuple.tuple,
+							tts_orioledb_store_tuple(descr->newTuple, newtuple,
 											 descr, COMMITSEQNO_INPROGRESS,
 											 ixnum, false,
 											 NULL);
