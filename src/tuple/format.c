@@ -80,7 +80,7 @@ o_tuple_next_field_offset(OTupleReaderState *state, Form_pg_attribute att)
 		}
 		else
 		{
-			elog(INFO, "tp2 %u, offset %u", state->tp, state->off);
+			elog(INFO, "attnum: %u, p2 %u, offset %u", state->attnum, state->tp, state->off);
 			state->off = att_align_pointer(state->off, att->attalign, -1,
 										   state->tp + state->off);
 			elog(INFO, "tp3 %u, offset2 %u", state->tp, state->off);
@@ -104,11 +104,14 @@ o_tuple_next_field_offset(OTupleReaderState *state, Form_pg_attribute att)
 		if (VARTAG_EXTERNAL(state->tp + state->off) == VARTAG_ORIOLEDB)
 			toastptr_size = sizeof(OToastValue);
 		else if (VARTAG_EXTERNAL(state->tp + state->off) == VARTAG_ONDISK)
-			toastptr_size = VARSIZE_EXTERNAL(state->off) + sizeof(varatt_external);
+			toastptr_size = VARSIZE_EXTERNAL(state->tp + state->off) + sizeof(varatt_external);
 		else
+		{
 			elog(INFO, "UNKNOWN VARTAG %u:", VARTAG_EXTERNAL(state->tp + state->off));
+			toastptr_size = VARSIZE_EXTERNAL(state->tp + state->off) + sizeof(varatt_external);
+		}
 
-		elog(INFO, "TOAST PTR size: %u", toastptr_size);
+		elog(INFO, "attnum: %u, TOAST PTR size: %u", state->attnum, toastptr_size);
 		state->off += toastptr_size;
 	}
 	else
@@ -165,7 +168,7 @@ o_tuple_read_next_field(OTupleReaderState *state, bool *isnull)
 	}
 
 	*isnull = false;
-	elog(INFO, "tp1 %u, offset %u, off %u", state->tp, state->off, off);
+	elog(INFO, "attnum %u, tp1 %u, offset %u, off %u", state->attnum, state->tp, state->off, off);
 	off = o_tuple_next_field_offset(state, att);
 	elog(INFO, "tp4 %u, offset %u, off %u", state->tp, state->off, off);
 	return fetchatt(att, state->tp + off);

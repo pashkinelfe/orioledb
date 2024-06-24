@@ -228,7 +228,6 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 			else if (ix_type == oIndexInvalid)
 			{
 				descr = o_fetch_table_descr(cur_oids);
-				//indexDescr = o_fetch_index_descr(cur_oids, ix_type, false, NULL);
 				indexDescr = descr ? GET_PRIMARY(descr) : NULL; 
 			}
 			else
