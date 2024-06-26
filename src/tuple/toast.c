@@ -434,7 +434,7 @@ generic_toast_insert_optional_wal(ToastAPI *api, void *key, Pointer data,
 		}
 
 		if (desc->storageType == BTreeStoragePersistence && wal)
-			add_modify_wal_record(WAL_REC_INSERT | WAL_REC_TOAST, desc, tup,
+			add_modify_wal_record((WAL_REC_INSERT | WAL_REC_TOAST), desc, tup,
 								  o_btree_len(desc, tup, OTupleLength));
 
 		pfree(tup.data);

@@ -72,9 +72,20 @@ add_modify_wal_record(uint8 rec_type, BTreeDescr *desc,
 	add_xid_wal_record_if_needed();
 
 	if (!ORelOidsIsEqual(local_oids, oids) || type != local_type)
+	{
+		elog(INFO, "SEND: RELATION, datoid: %d, reloid: %d, relnode: %d, local_datoid: %d, local_reloid: %d, local_relnode: %d, idx type: %s, local idx type: %s", oids.datoid, oids.reloid, oids.relnode,
+			       	local_oids.datoid, local_oids.reloid, local_oids.relnode,
+				type == oIndexInvalid ? "invalid" : type == oIndexToast ? "toast" : "_other_",
+				local_type == oIndexInvalid ? "invalid" : type == oIndexToast ? "toast" : "_other_");
 		add_rel_wal_record(oids, type);
-
-	elog(INFO, "length_put: %d", length);
+	}
+	elog(INFO, "SEND: %s %s length_put: %d, datoid: %d, reloid: %d, relnode: %d, idx type: %s",
+		       			(rec_type & 0x0f) == WAL_REC_INSERT ? "INSERT" :
+					     (rec_type & 0x0f) == WAL_REC_UPDATE ? "UPDATE" :
+					     (rec_type & 0x0f) == WAL_REC_DELETE ? "DELETE" : "_UNKNOWN_", 
+					     ((rec_type & 0xf0) & WAL_REC_TOAST) ? "TOAST" : "",
+					     length,  oids.datoid, oids.reloid, oids.relnode,
+					     type == oIndexInvalid ? "invalid" : type == oIndexToast ? "toast" : "_other_");
 	add_local_modify(rec_type, tuple, length);
 }
 
@@ -250,6 +261,7 @@ add_xid_wal_record_if_needed(void)
 		TransactionId logicalXid = get_current_logical_xid();
 
 		Assert(oxid != InvalidOXid);
+		elog(INFO, "SEND: XID");
 		add_xid_wal_record(oxid, logicalXid);
 	}
 }
@@ -422,6 +434,9 @@ o_wal_insert(BTreeDescr *desc, OTuple tuple)
 	int			size;
 
 	wal_record = recovery_rec_insert(desc, tuple, &call_pfree, &size);
+	elog(INFO, "____o_wal_insert, datoid %u, reloid %u, relnode %u, idx type: %s",
+		       	desc->oids.datoid, desc->oids.reloid, desc->oids.relnode, desc->type == oIndexToast ? "toast" :
+		       	desc->type == oIndexInvalid ? "invalid" : desc->type == oIndexPrimary? "primary" : "_other");
 	add_modify_wal_record(WAL_REC_INSERT, desc, wal_record, size);
 	if (call_pfree)
 		pfree(wal_record.data);
