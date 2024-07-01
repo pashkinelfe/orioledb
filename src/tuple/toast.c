@@ -419,6 +419,7 @@ generic_toast_insert_optional_wal(ToastAPI *api, void *key, Pointer data,
 			length = max_length;
 		}
 
+//		elog(INFO, "generic_toast_insert_optional_wal: length %u", length);
 		tup = api->createTuple(key, data, offset, length, arg);
 
 		inserted = o_btree_modify(desc, BTreeOperationInsert,
@@ -551,6 +552,7 @@ generic_toast_update_optional_wal(ToastAPI *api, void *key, Pointer data,
 			length = max_length;
 		}
 
+//		elog(INFO, "generic_toast_update_optional_wal: length %u", length);
 		tup = api->createTuple(key, data, offset, length, arg);
 
 		result = o_btree_modify(desc, BTreeOperationInsert,
