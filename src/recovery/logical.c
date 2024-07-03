@@ -149,8 +149,8 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 	uint8		rec_flags;
 	OffsetNumber length;
 	OIndexType	ix_type = oIndexInvalid;
-	TupleDescData 	*o_toast_tupDesc;
-	TupleDescData   *heap_toast_tupDesc;
+	TupleDescData 	*o_toast_tupDesc = NULL;
+	TupleDescData   *heap_toast_tupDesc = NULL;
 
 // 	elog(INFO, "ORIOLEDB_DECODE");	
 	while (ptr < endPtr)
@@ -309,7 +309,9 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				 * NULL);
 				 */
 			}
-			elog(INFO, "reloid: %d natts: %u toast natts: %u", cur_oids.reloid, descr->tupdesc->natts, descr->toast->leafTupdesc->natts);
+			
+			if (descr && descr->toast)
+				elog(INFO, "reloid: %d natts: %u toast natts: %u", cur_oids.reloid, descr->tupdesc->natts, descr->toast->leafTupdesc->natts);
 
 		}
 		else if (rec_type == WAL_REC_O_TABLES_META_LOCK)
@@ -418,8 +420,10 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 						Datum  t_values[3];
 						bool   t_isnull[3];
 						bool   attnum_isnull, offset_isnull;
-						int	pk_natts = o_toast_tupDesc->natts - TOAST_LEAF_FIELDS_NUM;
-
+						int	pk_natts;
+							
+						Assert(o_toast_tupDesc);
+						pk_natts = o_toast_tupDesc->natts - TOAST_LEAF_FIELDS_NUM;
 						Assert(rec_flags & WAL_REC_TOAST);
 						attnum = (uint16) o_fastgetattr(tuple.tuple, pk_natts + ATTN_POS, o_toast_tupDesc, &indexDescr->leafSpec, &attnum_isnull);
 						offset = (uint32) o_fastgetattr(tuple.tuple, pk_natts + OFFSET_POS, o_toast_tupDesc, &indexDescr->leafSpec, &offset_isnull);
@@ -438,6 +442,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 						t_isnull[0] = false;
 						t_isnull[1] = false;
 						t_isnull[2] = false;
+						Assert(heap_toast_tupDesc);
 						toasttup = heap_form_tuple(heap_toast_tupDesc, t_values, t_isnull);
 						change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, toasttup, true);
 						change->data.tp.clear_toast_afterwards = false;
