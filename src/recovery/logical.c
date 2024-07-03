@@ -32,7 +32,10 @@
 #include "access/detoast.h"
 #include "tuple/toast.h"
 
-static uint16          *chunk_seq = NULL;
+static uint32          *chunk_seq = NULL;
+#ifdef USE_ASSERT_CHECKING
+static uint32          *chunk_offset = NULL;
+#endif
 
 static void
 tts_copy_identity(TupleTableSlot *srcSlot, TupleTableSlot *dstSlot,
@@ -67,7 +70,7 @@ tts_copy_identity(TupleTableSlot *srcSlot, TupleTableSlot *dstSlot,
 	}
 }
 static ReorderBufferTupleBuf *
-record_buffer_tuple(ReorderBuffer *reorder, HeapTuple htup)
+record_buffer_tuple(ReorderBuffer *reorder, HeapTuple htup, bool freeHtup)
 {
 	HeapTuple	changeTup;
 	ReorderBufferTupleBuf *result;
@@ -79,6 +82,9 @@ record_buffer_tuple(ReorderBuffer *reorder, HeapTuple htup)
 	changeTup->t_len = htup->t_len;
 	changeTup->t_self = htup->t_self;
 	memcpy(changeTup->t_data, htup->t_data, htup->t_len);
+
+	if (freeHtup)
+		heap_freetuple(htup);
 
 	return result;
 }
@@ -92,10 +98,7 @@ record_buffer_tuple_slot(ReorderBuffer *reorder, TupleTableSlot *slot)
 
 	htup = ExecFetchSlotHeapTuple(slot, false, &freeHtup);
 
-	result = record_buffer_tuple(reorder, htup);
-
-	if (freeHtup)
-		heap_freetuple(htup);
+	result = record_buffer_tuple(reorder, htup, freeHtup);
 
 	return result;
 }
@@ -255,7 +258,10 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				TupleDescAttr(heap_toast_tupDesc, 2)->attcompression = InvalidCompressionMethod;
 				if (!chunk_seq)
 					chunk_seq = palloc0 (sizeof(uint32) * descr->tupdesc->natts);
-
+#ifdef USE_ASSERT_CHECKING
+				if (!chunk_offset)
+					chunk_offset = palloc0 (sizeof(uint32) * descr->tupdesc->natts);
+#endif
 				/*
 				 * indexDescr = o_fetch_index_descr(cur_oids, ix_type, false,
 				 * NULL);
@@ -366,35 +372,32 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 						bool   t_isnull[3];
 						bool   attnum_isnull, offset_isnull, data_isnull;
 						int	pk_natts = o_toast_tupDesc->natts - TOAST_LEAF_FIELDS_NUM;
-//						Relation toastrel;
 	
 						Assert(rec_flags & WAL_REC_TOAST);
-//						Assert(ix_type == oIndexToast);
-
 						attnum = (uint16) o_fastgetattr(tuple.tuple, pk_natts + ATTN_POS, o_toast_tupDesc, &indexDescr->leafSpec, &attnum_isnull);
 						offset = (uint32) o_fastgetattr(tuple.tuple, pk_natts + OFFSET_POS, o_toast_tupDesc, &indexDescr->leafSpec, &offset_isnull);
+						Assert((!attnum_isnull) && (!offset_isnull));
+						Assert(attnum > 0);
+						Assert(offset == chunk_offset[attnum - 1]);
+						/* Toast chunk in VARATT_4B uncompressed format */
 						data = o_fastgetattr_ptr(tuple.tuple, pk_natts + DATA_POS, o_toast_tupDesc, &indexDescr->leafSpec);
-						Assert(!attnum_isnull);
-						Assert(!offset_isnull);
-						Assert(data);
-						datasz = VARSIZE_ANY_EXHDR(data);
-						elog(INFO, "reloid: %u (attnum, seq, offset, size): (%u, %u, %u, %u) length_get: %u pk_natts: %u", cur_oids.reloid, attnum, chunk_seq[attnum], offset, datasz, length, pk_natts); 
-//						SET_VARSIZE(&chunk_data, chunk_size + VARHDRSZ);
-//						toastrel = table_open(rel->rd_rel->reltoastrelid, RowExclusiveLock);
-//						validIndex = toast_open_indexes(toastrel, RowExclusiveLock, &toastidxs, &num_indexes);
+						Assert(data && VARATT_IS_4B(data) && (!VARATT_IS_COMPRESSED(data)));
+						datasz = VARSIZE(data) - VARHDRSZ;
+						elog(INFO, "reloid: %u (attnum, seq, offset, size): (%u, %u, %u, %u) length_get: %u pk_natts: %u", cur_oids.reloid, attnum, chunk_seq[attnum - 1], offset, datasz, length, pk_natts); 
 //						GetNewOidWithIndex(cur_oids.reloid, RelationGetRelid(toastidxs[validIndex], (AttrNumber) attnum);  
 						t_values[0] = ObjectIdGetDatum(attnum + 8000);
-						t_values[1] = Int32GetDatum(chunk_seq[attnum]);
+						t_values[1] = Int32GetDatum(chunk_seq[attnum - 1]);
 						t_values[2] = PointerGetDatum(data);
 						t_isnull[0] = false;
 						t_isnull[1] = false;
 						t_isnull[2] = false;
 						toasttup = heap_form_tuple(heap_toast_tupDesc, t_values, t_isnull);
-						change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, toasttup);
+						change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, toasttup, true);
 						change->data.tp.clear_toast_afterwards = false;
-
-						heap_freetuple(toasttup);
-						chunk_seq[attnum]++;
+						chunk_seq[attnum - 1]++;
+#ifdef USE_ASSERT_CHECKING
+						chunk_offset[attnum - 1] += datasz;
+#endif
 	//					volatile bool a = 1;
 //                                      while (a)
   //                                              {
@@ -422,8 +425,6 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 							Assert(descr->toast);
 							for (int i = 0; i < natts; i++)
 							{
-//								(struct varlena *) DatumGetPointer(value)
-//								memcpy(&ote, VARDATA_EXTERNAL(attr), O_TOAST_EXTERNAL_SZ);
 								old_values[i] = o_fastgetattr(tuple.tuple, i + 1, descr->tupdesc, &indexDescr->leafSpec, &isnull[i]);
 								Assert(!isnull[i]);
 								new_values[i] = old_values[i];
@@ -433,29 +434,27 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 							for (int i = 0; i < descr->ntoastable; i++)
 							{
 								int toast_attn = descr->toastable[i] - ctid_off;
-//								OToastExternal *ote = palloc0(O_TOAST_EXTERNAL_SZ);
-								varatt_external ve;
+								struct varlena *old_data;
+								struct varlena *new_data;
 								OToastValue otv;
-
-								char *result = palloc0(TOAST_POINTER_SIZE);
-								struct varlena * old_data = DatumGetPointer(old_values[toast_attn]);
+								varatt_external ve;
+							
+								old_data = DatumGetPointer(old_values[toast_attn]);
 								Assert(VARATT_IS_EXTERNAL(old_data));
-  
 								memcpy(&otv, old_data, sizeof(otv));
-//								memcpy(ote, old_data, O_TOAST_EXTERNAL_SZ);
-//								memcpy(ote, VARDATA_EXTERNAL(old_data), O_TOAST_EXTERNAL_SZ); 
-//								elog(INFO, "Old toast pointer: toast_attn: %u data_size %u attnum %u raw_size %u toasted_size %u , toastrelid %d, vartag: %u", toast_attn, ote->data_size, ote->attnum, ote->raw_size, ote->toasted_size, ote->relid, VARTAG_EXTERNAL(old_values[toast_attn]));
-//								elog(INFO, "Old ve pointer: toast_attn: %u raw_size %u extinfo %u valueid %u toastrelid %d", toast_attn, old_ve.va_rawsize, old_ve.va_extinfo, old_ve.va_valueid, old_ve.va_toastrelid);
 								elog(INFO, "Old toast value: compression %u, raw_size, %u, toasted_size %u", otv.compression, otv.raw_size, otv.toasted_size);
-
-								ve.va_rawsize = otv.raw_size;
-								ve.va_extinfo = otv.toasted_size;
+								ve.va_rawsize = otv.toasted_size + VARHDRSZ;
+								ve.va_extinfo = (otv.raw_size + VARHDRSZ) | (otv.compression << VARLENA_EXTSIZE_BITS);
 								ve.va_toastrelid = descr->toast->oids.reloid;
 							        ve.va_valueid = ObjectIdGetDatum(toast_attn + 1 + 8000);
-								SET_VARTAG_EXTERNAL(result, VARTAG_ONDISK);
-								memcpy(VARDATA_EXTERNAL(result), &ve, sizeof(ve));
-								elog(INFO, "New toast pointer rawsize: %u, extinfo: %u, toastrelid %u, valueid %u  ", ve.va_rawsize, ve.va_extinfo, ve.va_toastrelid, ve.va_valueid);
-								new_values[toast_attn] = PointerGetDatum(result);
+								elog(INFO, "New toast pointer compression: %u rawsize: %u, extinfo_size: %u, toastrelid %u, valueid %u  ", (ve.va_extinfo >> VARLENA_EXTSIZE_BITS), ve.va_rawsize,
+									(ve.va_extinfo & VARLENA_EXTSIZE_MASK),
+								       	ve.va_toastrelid, ve.va_valueid);
+							
+								new_data = palloc0(TOAST_POINTER_SIZE);		
+								SET_VARTAG_EXTERNAL(new_data, VARTAG_ONDISK);
+								memcpy(VARDATA_EXTERNAL(new_data), &ve, sizeof(ve));
+								new_values[toast_attn] = PointerGetDatum(new_data);
 
 //						volatile bool a = 1;
 //						while (a)
@@ -464,23 +463,15 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 //						}
 
 							}
-//							newtuple = o_form_tuple(descr->tupdesc, &indexDescr->leafSpec,
-//									o_tuple_get_version(tuple.tuple), new_values, isnull);
-
-//							tts_orioledb_store_tuple(descr->newTuple, newtuple,
-//											 descr, COMMITSEQNO_INPROGRESS,
-//											 ixnum, false,
-//											 NULL);
 							newheaptuple = heap_form_tuple(descr->tupdesc, new_values, isnull);
-							change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, newheaptuple);						       
-							/* 
-							 * At this time we're done with all chunks of TOAST rel,
-							 * so reset counting for the future
-							 */       
+							change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, newheaptuple, true);						       
+							/* We're done with all chunks of TOAST rel, so reset chunk counters */   
 							if (chunk_seq)
 								memset(chunk_seq, 0, sizeof(uint32) * descr->tupdesc->natts);
-
-							heap_freetuple(newheaptuple);
+#ifdef USE_ASSERT_CHECKING
+							if (chunk_offset)
+								memset(chunk_offset, 0, sizeof(uint32) * descr->tupdesc->natts);
+#endif							
 						}
 						else /* Tuple without TOASTed attrs ptrs */
 						{
