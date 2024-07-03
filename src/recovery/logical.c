@@ -410,7 +410,6 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 					if (ix_type == oIndexToast)
                                         {
-						uint32 id;
 						uint16 attnum;
 						uint32 offset;
 						uint32 chunk_size;
@@ -418,7 +417,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 						HeapTuple toasttup;
 						Datum  t_values[3];
 						bool   t_isnull[3];
-						bool   attnum_isnull, offset_isnull, data_isnull;
+						bool   attnum_isnull, offset_isnull;
 						int	pk_natts = o_toast_tupDesc->natts - TOAST_LEAF_FIELDS_NUM;
 
 						Assert(rec_flags & WAL_REC_TOAST);
@@ -466,7 +465,6 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 							Datum	    *new_values = palloc0(natts * sizeof(Datum));
 							bool 	    *isnull = palloc0(natts * sizeof(bool));
 							int         ctid_off = indexDescr->primaryIsCtid ? 1 : 0;
-							OTuple 	    newtuple;
 							HeapTuple   newheaptuple;
 
 							elog(INFO, "%s", tuple.tuple.formatFlags & O_TUPLE_FLAGS_FIXED_FORMAT ? "FIXED":"NON_FIXED");
@@ -487,7 +485,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 								OToastValue otv;
 								varatt_external ve;
 
-								old_toastptr = DatumGetPointer(old_values[toast_attn]);
+								old_toastptr = (struct varlena *) DatumGetPointer(old_values[toast_attn]);
 								Assert(VARATT_IS_EXTERNAL(old_toastptr));
 								memcpy(&otv, old_toastptr, sizeof(otv));
 								elog(INFO, "Old toast value: toast_attn: %u compression %u, raw_size, %u, toasted_size %u", toast_attn + 1, otv.compression, otv.raw_size, otv.toasted_size);
