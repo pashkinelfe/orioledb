@@ -414,13 +414,16 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
                                         {
 						uint16 attnum;
 						uint32 offset;
-						uint32 chunk_size;
-						Pointer chunk;
+						uint32 old_chunk_size, /* without header */
+						       new_chunk_size; /* without header */
+						Pointer old_chunk;
+						Pointer	new_chunk = NULL;
 						HeapTuple toasttup;
 						Datum  t_values[3];
 						bool   t_isnull[3];
 						bool   attnum_isnull, offset_isnull;
 						int	pk_natts;
+						bool need_to_free = false;
 							
 						Assert(o_toast_tupDesc);
 						pk_natts = o_toast_tupDesc->natts - TOAST_LEAF_FIELDS_NUM;
@@ -429,27 +432,67 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 						offset = (uint32) o_fastgetattr(tuple.tuple, pk_natts + OFFSET_POS, o_toast_tupDesc, &indexDescr->leafSpec, &offset_isnull);
 						Assert((!attnum_isnull) && (!offset_isnull));
 						Assert(attnum > 0);
-						Assert(offset == data_done[attnum - 1]);
 						/* Toast chunk in VARATT_4B uncompressed format */
-						chunk = o_fastgetattr_ptr(tuple.tuple, pk_natts + DATA_POS, o_toast_tupDesc, &indexDescr->leafSpec);
-						Assert(chunk && VARATT_IS_4B(chunk) && (!VARATT_IS_COMPRESSED(chunk)));
-						chunk_size = VARSIZE(chunk) - VARHDRSZ;
-						elog(INFO, "reloid: %u (attnum, seq, offset, size): (%u, %u, %u, %u) length_get: %u pk_natts: %u", cur_oids.reloid, attnum, chunk_seq[attnum - 1], offset, chunk_size, length, pk_natts); 
+						old_chunk = o_fastgetattr_ptr(tuple.tuple, pk_natts + DATA_POS, o_toast_tupDesc, &indexDescr->leafSpec);
+						Assert(old_chunk && VARATT_IS_4B(old_chunk) && (!VARATT_IS_COMPRESSED(old_chunk)));
+						old_chunk_size = VARSIZE(old_chunk) - VARHDRSZ;
+						if (chunk_seq[attnum - 1] == 0)
+						{
+							int extra_header_size;
+
+							if (VARATT_IS_4B(VARDATA(old_chunk)))
+								extra_header_size = VARHDRSZ;
+							else if (VARATT_IS_COMPRESSED(VARDATA(old_chunk)))
+								extra_header_size = VARHDRSZ_COMPRESSED;
+							else
+								Assert(false);
+
+							new_chunk_size = old_chunk_size - extra_header_size;
+							need_to_free = true;
+							new_chunk = palloc0(new_chunk_size + VARHDRSZ);
+							memcpy(new_chunk, old_chunk, VARHDRSZ);
+							SET_VARSIZE(new_chunk, new_chunk_size + VARHDRSZ);
+							memcpy(VARDATA(new_chunk), VARDATA(old_chunk) + extra_header_size, new_chunk_size);
+//							elog(INFO, "hdr: %u, extra hdr: %u",
+//									VARSIZE(old_chunk),
+//								       	VARSIZE(VARDATA(old_chunk)));
+						}
+						else
+						{
+							Assert(offset - VARHDRSZ == data_done[attnum - 1]);
+							new_chunk = old_chunk;
+							new_chunk_size = old_chunk_size;
+						}
+
 //						GetNewOidWithIndex(cur_oids.reloid, RelationGetRelid(toastidxs[validIndex], (AttrNumber) attnum);  
 						t_values[0] = ObjectIdGetDatum(attnum + 8000);
 						t_values[1] = Int32GetDatum(chunk_seq[attnum - 1]);
-						t_values[2] = PointerGetDatum(chunk);
+						t_values[2] = PointerGetDatum(new_chunk);
 						t_isnull[0] = false;
 						t_isnull[1] = false;
 						t_isnull[2] = false;
+						elog(INFO, "reloid: %u (attnum, seq, offset, oldsize, newsize): (%u, %u, %u, %u, %u) length_get: %u pk_natts: %u", cur_oids.reloid, attnum, chunk_seq[attnum - 1], offset, old_chunk_size, new_chunk_size, length, pk_natts);
+
+//						if(chunk_seq[attnum - 1] == 0)
+//							memcpy(&buf, ((char*)chunk)+8, 50);
+//						else
+//							memcpy(&buf, chunk+4, 50);
+//						elog(INFO, "chunk_start %s", buf);
+
 						Assert(heap_toast_tupDesc);
 						toasttup = heap_form_tuple(heap_toast_tupDesc, t_values, t_isnull);
 						change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, toasttup, true);
 						change->data.tp.clear_toast_afterwards = false;
 						chunk_seq[attnum - 1]++;
 #ifdef USE_ASSERT_CHECKING
-						data_done[attnum - 1] += chunk_size;
+						data_done[attnum - 1] += new_chunk_size;
 #endif
+						if(need_to_free && new_chunk)
+						{
+							pfree(new_chunk);
+							need_to_free = false;
+						}
+
 	//					volatile bool a = 1;
 //                                      while (a)
   //                                              {
@@ -494,8 +537,8 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 								Assert(VARATT_IS_EXTERNAL(old_toastptr));
 								memcpy(&otv, old_toastptr, sizeof(otv));
 								elog(INFO, "Old toast value: toast_attn: %u compression %u, raw_size, %u, toasted_size %u", toast_attn + 1, otv.compression, otv.raw_size, otv.toasted_size);
-								ve.va_rawsize = otv.toasted_size + VARHDRSZ;
-								ve.va_extinfo = (otv.raw_size + VARHDRSZ) | (otv.compression << VARLENA_EXTSIZE_BITS);
+								ve.va_rawsize = otv.toasted_size;
+								ve.va_extinfo = (otv.raw_size) | (otv.compression << VARLENA_EXTSIZE_BITS);
 								ve.va_toastrelid = descr->toast->oids.reloid;
 							        ve.va_valueid = ObjectIdGetDatum(toast_attn + 1 + 8000);
 								Assert(data_done[toast_attn] == VARATT_EXTERNAL_GET_EXTSIZE(ve));
