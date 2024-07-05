@@ -451,9 +451,12 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 							else if (VARATT_IS_COMPRESSED(VARDATA(old_chunk)))
 								extra_header_size = VARHDRSZ_COMPRESSED;
 							else
+							{
+								extra_header_size = 0; /* Make compiler happy */
 								ereport(ERROR,
 										 (errcode(ERRCODE_WRONG_OBJECT_TYPE),
 										  errmsg("unknown header of a detoasted value in a realtion\"%u\":", descr->oids.reloid)));
+							}
 
 							new_chunk_size = old_chunk_size - extra_header_size;
 							need_to_free = true;
