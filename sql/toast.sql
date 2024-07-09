@@ -496,21 +496,21 @@ COMMIT;
 -- Uncompressed
 
 CREATE TABLE o_logical(id integer PRIMARY KEY, v1 text, v2 text) using orioledb WITH (compress = -1, toast_compress = -1, primary_compress = -1);
-SELECT * FROM pg_create_logical_replication_slot('regression_slot', 'test_decoding', false, true);
+SELECT slot_name FROM pg_create_logical_replication_slot('regression_slot', 'test_decoding', false, true);
 INSERT INTO o_logical VALUES ('1', generate_string(10 + 1, 4000), generate_string(10 + 2, 5000));
 INSERT INTO o_logical VALUES ('2', generate_string(20 + 1, 4000), generate_string(20 + 2, 5000));
 SELECT * FROM o_logical;
-SELECT * FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL);
+SELECT xid, data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL);
 SELECT pg_drop_replication_slot('regression_slot');
 DROP TABLE o_logical;
 
 -- Compressed
 CREATE TABLE o_logical(id integer PRIMARY KEY, v1 text, v2 text) using orioledb WITH (compress = -1, toast_compress = -1, primary_compress = -1);
-SELECT * FROM pg_create_logical_replication_slot('regression_slot', 'test_decoding', false, true);
+SELECT slot_name FROM pg_create_logical_replication_slot('regression_slot', 'test_decoding', false, true);
 INSERT INTO o_logical VALUES ('1', repeat('1', 4000) || generate_string(10 + 1, 4000), repeat('1', 4000) || generate_string(10 + 2, 5000));
 INSERT INTO o_logical VALUES ('2', repeat('2', 4000) || generate_string(20 + 1, 4000), repeat('2', 4000) || generate_string(20 + 2, 5000));
 SELECT * FROM o_logical;
-SELECT * FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL);
+SELECT xid, data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL);
 SELECT * FROM pg_drop_replication_slot('regression_slot');
 DROP TABLE o_logical;
 
