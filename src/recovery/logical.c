@@ -146,7 +146,7 @@ static HeapTuple convert_toast_pointers(OTableDescr *descr, OIndexDescr *indexDe
 	for (int i = 0; i < natts; i++)
 	{
 		old_values[i] = o_fastgetattr(tuple.tuple, i + 1, descr->tupdesc, &indexDescr->leafSpec, &isnull[i]);
-		Assert(!isnull[i]);
+//		Assert(!isnull[i]);
 		new_values[i] = old_values[i];
 	}
 
@@ -159,6 +159,11 @@ static HeapTuple convert_toast_pointers(OTableDescr *descr, OIndexDescr *indexDe
 		OToastValue otv;
 		varatt_external ve;
 
+		if(isnull[toast_attn])
+		{
+			elog(DEBUG4, "NULL attr %u", toast_attn);
+			continue;
+		}
 		old_toastptr = (struct varlena *) DatumGetPointer(old_values[toast_attn]);
 //		Assert(VARATT_IS_EXTERNAL(old_toastptr));
 		if(!old_toastptr || !VARATT_IS_EXTERNAL(old_toastptr))
@@ -168,7 +173,7 @@ static HeapTuple convert_toast_pointers(OTableDescr *descr, OIndexDescr *indexDe
 		}
 
 		memcpy(&otv, old_toastptr, sizeof(otv));
-		elog(DEBUG4, "Old toast value: toast_attn: %u compression %u, raw_size, %u, toasted_size %u", toast_attn + 1, otv.compression, otv.raw_size, otv.toasted_size);
+		elog(DEBUG4, "reloid: Old toast value: %u toast_attn: %u compression %u, raw_size, %u, toasted_size %u", descr->oids.reloid, toast_attn + 1, otv.compression, otv.raw_size, otv.toasted_size);
 		ve.va_rawsize = otv.raw_size + VARHDRSZ;
 		ve.va_extinfo = (otv.toasted_size - VARHDRSZ) | (otv.compression << VARLENA_EXTSIZE_BITS);
 		ve.va_toastrelid = descr->toast->oids.reloid;
@@ -569,6 +574,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 							newheaptuple = convert_toast_pointers(descr, indexDescr, tuple, true);
 							change->data.tp.newtuple = record_buffer_tuple(ctx->reorder, newheaptuple, true);
+							Assert(change->data.tp.newtuple);
 						}
 						else /* Tuple without TOASTed attrs */
 						{
@@ -584,7 +590,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 
 					ReorderBufferQueueChange(ctx->reorder, logicalXid,
 											 buf->origptr + (ptr - startPtr),
-											 change, (rec_flags & WAL_REC_TOAST));
+											 change, (ix_type == oIndexToast));
 
 				}
 				else if (rec_type == WAL_REC_UPDATE)
@@ -605,6 +611,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 					change->data.tp.relnode.relNode = cur_oids.relnode;
 #endif
 
+					elog(DEBUG4, "reloid: %u", cur_oids.reloid);	
 					/* Primary table contains TOASTed attributes needs conversion of them */
 					if(descr->ntoastable > 0)
 					{
@@ -635,8 +642,7 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 				{
 					change = ReorderBufferGetChange(ctx->reorder);
 					change->action = REORDER_BUFFER_CHANGE_DELETE;
-					change->data.tp.clear_toast_afterwards = true;
-#if PG_VERSION_NUM >= 160000
+				#if PG_VERSION_NUM >= 160000
 					change->data.tp.rlocator.spcOid = DEFAULTTABLESPACE_OID;
 					change->data.tp.rlocator.dbOid = cur_oids.datoid;
 					change->data.tp.rlocator.relNumber = cur_oids.relnode;
@@ -645,28 +651,40 @@ orioledb_decode(LogicalDecodingContext *ctx, XLogRecordBuffer *buf)
 					change->data.tp.relnode.dbNode = cur_oids.datoid;
 					change->data.tp.relnode.relNode = cur_oids.relnode;
 #endif
-					/* Primary table contains TOASTed attributes needs conversion of them */
-                                        if(descr->ntoastable > 0)
-                                        {
-						HeapTuple oldheaptuple;
-
-						oldheaptuple = convert_toast_pointers(descr, indexDescr, tuple, false);
-						change->data.tp.oldtuple = record_buffer_tuple(ctx->reorder, oldheaptuple, true);
-                                        }
-					else /* Tuple without TOASTed attrs */
+					elog(DEBUG4, "reloid: %u", cur_oids.reloid);	
+					if (ix_type == oIndexToast)
 					{
+						change->data.tp.clear_toast_afterwards = false;
 						tts_orioledb_store_non_leaf_tuple(descr->oldTuple, tuple.tuple,
+										  descr, COMMITSEQNO_INPROGRESS,
+										  PrimaryIndexNumber, false,
+										  NULL);
+						change->data.tp.oldtuple = record_buffer_tuple_slot(ctx->reorder, descr->oldTuple);
+					}
+					else
+					{
+						change->data.tp.clear_toast_afterwards = true;
+						/* Primary table contains TOASTed attributes needs conversion of them */
+        	                                if(descr->ntoastable > 0)
+                	                        {
+							HeapTuple oldheaptuple;
+
+							oldheaptuple = convert_toast_pointers(descr, indexDescr, tuple, false);
+							change->data.tp.oldtuple = record_buffer_tuple(ctx->reorder, oldheaptuple, true);
+	                                        }
+						else /* Tuple without TOASTed attrs */
+						{
+							tts_orioledb_store_non_leaf_tuple(descr->oldTuple, tuple.tuple,
 													  descr, COMMITSEQNO_INPROGRESS,
 													  PrimaryIndexNumber, false,
 													  NULL);
-						change->data.tp.oldtuple = record_buffer_tuple_slot(ctx->reorder, descr->oldTuple);
+							change->data.tp.oldtuple = record_buffer_tuple_slot(ctx->reorder, descr->oldTuple);
+
+						}
 					}
-
-
-
 					ReorderBufferQueueChange(ctx->reorder, logicalXid,
 											 buf->origptr + (ptr - startPtr),
-											 change, false);
+											 change, (ix_type == oIndexToast));
 				}
 			}
 
