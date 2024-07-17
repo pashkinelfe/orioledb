@@ -25,6 +25,7 @@
 /* position after primary ix tuple */
 #define ATTN_POS (1)
 #define OFFSET_POS (2)
+#define CHUNK_SEQ_POS (2)
 #define DATA_POS (3)
 
 #define TOAST_LEAF_FIELDS_NUM (3)
